@@ -2,7 +2,7 @@
  * API Client utility for making authenticated requests to the backend
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/$/, '');
 
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -67,7 +67,7 @@ async function apiRequest<T = any>(
   const { includeAuth = true, ...fetchOptions } = options;
 
   try {
-    const url = `${API_URL}${endpoint}`;
+    const url = `${API_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
     const headers = getHeaders(includeAuth);
 
     const response = await fetch(url, {
