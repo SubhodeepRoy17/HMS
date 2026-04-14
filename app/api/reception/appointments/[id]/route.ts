@@ -17,7 +17,7 @@ function extractAndVerifyAuth(req: NextRequest) {
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = extractAndVerifyAuth(req);
@@ -29,7 +29,7 @@ export async function DELETE(
     }
 
     const { db } = await connectToDatabase();
-    const appointmentId = params.id;
+    const { id: appointmentId } = await params;
 
     const appointment = await db.collection('appointments').findOne({ appointmentId });
     
@@ -90,7 +90,7 @@ export async function DELETE(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = extractAndVerifyAuth(req);
@@ -103,7 +103,7 @@ export async function PUT(
 
     const body = await req.json();
     const { newDate, newTimeSlot } = body;
-    const appointmentId = params.id;
+    const { id: appointmentId } = await params;
 
     if (!newDate || !newTimeSlot) {
       return NextResponse.json(

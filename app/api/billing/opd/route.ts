@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const patientId = url.searchParams.get('patientId');
     const status = url.searchParams.get('status');
+    const billType = url.searchParams.get('billType');
     const startDate = url.searchParams.get('startDate');
     const endDate = url.searchParams.get('endDate');
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -54,10 +55,13 @@ export async function GET(req: NextRequest) {
     let filter: any = {};
 
     if (patientId) {
-      filter.patientId = toObjectId(patientId);
+      filter.patientId = patientId;
     }
     if (status && status !== 'all') {
       filter.status = status;
+    }
+    if (billType && billType !== 'all') {
+      filter.billType = billType;
     }
     if (startDate && endDate) {
       filter.createdAt = {
@@ -68,7 +72,29 @@ export async function GET(req: NextRequest) {
 
     // Role-based filtering
     if (user.role === 'patient') {
-      filter.patientId = toObjectId(user.userId);
+      if (user.patientId) {
+        filter.patientId = user.patientId;
+      } else {
+        const patientRegistration = await db.collection('patientRegistrations').findOne(
+          { userId: toObjectId(user.userId) },
+          { sort: { registrationDate: -1 } }
+        );
+
+        if (!patientRegistration?.patientId) {
+          return NextResponse.json({
+            success: true,
+            data: [],
+            pagination: {
+              page,
+              limit,
+              total: 0,
+              pages: 0,
+            },
+          });
+        }
+
+        filter.patientId = patientRegistration.patientId;
+      }
     }
 
     const total = await db.collection('bills').countDocuments(filter);
@@ -119,6 +145,7 @@ export async function POST(req: NextRequest) {
       paymentType = 'Cash',
       timeSlot = 'Morning',
       doctorType = 'General',
+      billType,
       services,
       concessionPercentage = 0,
       concessionAmount = 0,
@@ -173,9 +200,12 @@ export async function POST(req: NextRequest) {
     const billSeq = await getNextSequence(db, 'billNumber');
     const billNumber = generateId('BILL', billSeq);
 
+    const derivedBillType = billType || (services.every((service: any) => ['pathology', 'imaging'].includes(service.category)) ? 'lab' : 'consultation');
+
     const bill = {
       billNumber,
-      patientId: toObjectId(patientId),
+      billType: derivedBillType,
+      patientId,
       patientName: patientDetails?.demographics?.fullName || patientName,
       registrationId: registrationId ? toObjectId(registrationId) : null,
       patientType,
@@ -187,10 +217,9 @@ export async function POST(req: NextRequest) {
       tax,
       concession,
       totalAmount,
-      amountPaid: paymentType === 'Cash' ? totalAmount : 0,
-      balanceDue: paymentType === 'Cash' ? 0 : totalAmount,
-      status: paymentType === 'Cash' ? 'paid' : 'pending',
-      paymentDate: paymentType === 'Cash' ? new Date() : undefined,
+      amountPaid: 0,
+      balanceDue: totalAmount,
+      status: 'pending',
       createdBy: toObjectId(user.userId),
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -198,43 +227,78 @@ export async function POST(req: NextRequest) {
 
     const result = await db.collection('bills').insertOne(bill);
 
-    // Generate receipt if paid
-    let receipt = null;
-    if (paymentType === 'Cash') {
-      const receiptSeq = await getNextSequence(db, 'receiptNumber');
-      const receiptNumber = generateId('RCPT', receiptSeq);
-      
-      receipt = {
-        receiptNumber,
-        billId: result.insertedId,
-        patientId: toObjectId(patientId),
-        patientName: patientDetails?.demographics?.fullName || patientName,
-        amount: totalAmount,
-        paymentMethod: 'Cash',
-        printedDate: new Date(),
-        printedBy: toObjectId(user.userId),
-        createdAt: new Date(),
-      };
-      
-      await db.collection('paymentReceipts').insertOne(receipt);
-      
-      // Update patient registration payment status
-      if (registrationId) {
-        await db.collection('patientRegistrations').updateOne(
-          { _id: toObjectId(registrationId) },
-          { $set: { paymentStatus: 'paid', receiptNumber } }
-        );
+    const newBill = await db.collection('bills').findOne({ _id: result.insertedId });
+
+    // Auto transfer relevant services into investigations module.
+    const investigationServices = serviceItems.filter((item: any) =>
+      item.category === 'pathology' || item.category === 'imaging'
+    );
+
+    if (investigationServices.length > 0) {
+      let patientAge = 0;
+      let patientGender = 'Other';
+
+      const latestRegistration = await db.collection('patientRegistrations').findOne(
+        { patientId },
+        { sort: { registrationDate: -1 } }
+      );
+
+      if (latestRegistration?.demographics) {
+        patientAge = Number(latestRegistration.demographics.age || 0);
+        patientGender = latestRegistration.demographics.sex || 'Other';
+      }
+
+      const investigationDocs = [];
+      for (const svc of investigationServices) {
+        const invSeq = await getNextSequence(db, 'investigationId');
+        const investigationId = generateId('INV', invSeq);
+
+        const testMaster = await db.collection('testMasters').findOne({ testName: svc.description });
+        const parameters = (testMaster?.parameters || []).map((param: any) => ({
+          name: param.name,
+          value: '',
+          unit: param.unit,
+          referenceRange: param.referenceRange,
+          isAbnormal: false,
+          interpretation: null,
+          formula: param.formula || null,
+          options: param.options || null,
+        }));
+
+        investigationDocs.push({
+          investigationId,
+          patientId,
+          patientName: patientDetails?.demographics?.fullName || patientName,
+          patientAge,
+          patientGender,
+          registrationId: registrationId ? toObjectId(registrationId) : null,
+          billId: result.insertedId,
+          billNumber,
+          testName: svc.description,
+          testCategory: svc.category === 'pathology' ? 'Pathology' : 'Imaging',
+          department: svc.category === 'pathology' ? 'Pathology' : 'Radiology',
+          requisitionDate: new Date(),
+          requisitionedBy: toObjectId(user.userId),
+          clinicalNotes: '',
+          parameters,
+          status: 'pending',
+          source: 'OPD_BILLING',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+
+      if (investigationDocs.length > 0) {
+        await db.collection('investigations').insertMany(investigationDocs);
       }
     }
-
-    const newBill = await db.collection('bills').findOne({ _id: result.insertedId });
 
     return NextResponse.json({
       success: true,
       message: 'Bill created successfully',
       data: {
         bill: newBill,
-        receipt,
+        receipt: null,
       },
     }, { status: 201 });
 

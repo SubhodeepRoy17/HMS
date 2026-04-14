@@ -298,7 +298,13 @@ export default function ReceptionistCheckInPage() {
                           <UserCheck className="h-4 w-4 mr-1" /> Check-in
                         </Button>
                       )}
-                      <Button size="sm" variant="outline">View Details</Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => toast.info(`Patient: ${checkIn.patientName} | ID: ${checkIn.patientId} | Arrival: ${checkIn.arrivalTime}`)}
+                      >
+                        View Details
+                      </Button>
                     </div>
                   </div>
                 ))

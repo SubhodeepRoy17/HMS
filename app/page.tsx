@@ -22,15 +22,6 @@ import Link from 'next/link'
 export default function Landing() {
   const roles = [
     {
-      id: 'admin',
-      name: 'Administrator',
-      description: 'System management and oversight',
-      icon: Briefcase,
-      features: ['User management', 'Analytics dashboard', 'System settings'],
-      href: '/auth?role=admin',
-      color: 'from-blue-500 to-cyan-500',
-    },
-    {
       id: 'doctor',
       name: 'Doctor',
       description: 'Patient care and medical records',
@@ -147,7 +138,7 @@ export default function Landing() {
                 <Heart className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">MediCare HMS</h1>
+                <h1 className="text-2xl font-bold text-white">MediCare </h1>
                 <p className="text-xs text-slate-400">Hospital Management System</p>
               </div>
             </div>
@@ -185,7 +176,7 @@ export default function Landing() {
           </div>
 
           {/* Role Cards */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-20">
+          <div className="grid md:grid-cols-3 gap-6 mb-20">
             {roles.map((role) => {
               const Icon = role.icon
               return (

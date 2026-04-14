@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
+  CreditCard,
   FileText,
   Menu,
   Stethoscope,
@@ -11,6 +12,9 @@ import {
   X,
   Home,
   Calendar,
+  Search,
+  CalendarClock,
+  ClipboardList,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -23,8 +27,12 @@ interface NavigationItem {
 
 const receptionistNavigation: NavigationItem[] = [
   { label: 'Dashboard', href: '/receptionist/dashboard', icon: Home },
+  { label: 'Enquiries', href: '/receptionist/enquiries', icon: Search },
+  { label: 'Doctor Schedules', href: '/receptionist/doctor-schedules', icon: CalendarClock },
   { label: 'Check-in', href: '/receptionist/check-in', icon: Users },
   { label: 'Appointments', href: '/receptionist/appointments', icon: Calendar },
+  { label: 'Billing', href: '/receptionist/billing', icon: CreditCard },
+  { label: 'Inpatient Daily', href: '/receptionist/inpatient-daily', icon: ClipboardList },
   { label: 'Patient Records', href: '/receptionist/patient-records', icon: FileText },
 ]
 

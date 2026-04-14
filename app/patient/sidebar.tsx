@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   ClipboardList,
+  CreditCard,
   FileText,
   Menu,
   Stethoscope,
@@ -24,6 +25,7 @@ interface NavigationItem {
 const patientNavigation: NavigationItem[] = [
   { label: 'Dashboard', href: '/patient/dashboard', icon: Home },
   { label: 'Appointments', href: '/patient/appointments', icon: Calendar },
+  { label: 'Billing', href: '/patient/billing', icon: CreditCard },
   { label: 'Lab Results', href: '/patient/lab-results', icon: FileText },
   { label: 'Medical History', href: '/patient/medical-history', icon: ClipboardList },
 ]

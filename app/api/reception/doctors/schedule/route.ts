@@ -34,24 +34,25 @@ export async function GET(req: NextRequest) {
     let filter: any = {};
     
     if (doctorId) {
-      filter.doctorId = toObjectId(doctorId);
+      filter.doctorId = toObjectId(doctorId);  // ✅ Convert to ObjectId for consistent queries
     }
     if (department) {
       filter.department = department;
     }
     
-    // FIXED: Date range query instead of exact match
+    // Handle date range query
     if (date) {
-      const startDate = new Date(date);
+      const [year, month, day] = date.split('-').map(Number);
+      const startDate = new Date(year, month - 1, day);
       startDate.setHours(0, 0, 0, 0);
       
-      const endDate = new Date(date);
+      const endDate = new Date(year, month - 1, day);
       endDate.setHours(23, 59, 59, 999);
       
       filter.date = { $gte: startDate, $lte: endDate };
     }
 
-    console.log('Schedule filter:', JSON.stringify(filter, null, 2));
+    console.log('Schedule GET filter:', JSON.stringify(filter, null, 2));
 
     const schedules = await db
       .collection('doctorSchedules')
@@ -86,29 +87,48 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { doctorId, doctorName, department, date, timeSlots } = body;
+    const { doctorId, doctorName, department, doctorType, date, timeSlots } = body;
+
+    console.log('Schedule POST body:', { doctorId, doctorName, department, doctorType, date, timeSlots });
 
     if (!doctorId || !date || !timeSlots || !Array.isArray(timeSlots)) {
       return NextResponse.json(
-        { success: false, message: 'Missing required fields' },
+        { success: false, message: 'Missing required fields: doctorId, date, timeSlots' },
+        { status: 400 }
+      );
+    }
+
+    if (timeSlots.length === 0) {
+      return NextResponse.json(
+        { success: false, message: 'At least one time slot is required' },
         { status: 400 }
       );
     }
 
     const { db } = await connectToDatabase();
 
-    // Parse date properly - set to start of day
-    const scheduleDate = new Date(date);
+    // Parse date properly - date comes as YYYY-MM-DD string
+    const [year, month, day] = date.split('-').map(Number);
+    const scheduleDate = new Date(year, month - 1, day);
     scheduleDate.setHours(0, 0, 0, 0);
 
+    console.log('Parsed schedule date:', scheduleDate);
+
     // Check if schedule already exists for this doctor on this date
+    const dateEnd = new Date(scheduleDate);
+    dateEnd.setHours(23, 59, 59, 999);
+
     const existingSchedule = await db.collection('doctorSchedules').findOne({
-      doctorId: toObjectId(doctorId),
-      date: { $gte: scheduleDate, $lt: new Date(scheduleDate.getTime() + 24 * 60 * 60 * 1000) }
+      doctorId: toObjectId(doctorId),  // ✅ Convert to ObjectId (docs use _id field)
+      date: { $gte: scheduleDate, $lte: dateEnd }
     });
 
+    console.log('Existing schedule:', existingSchedule);
+
     if (existingSchedule) {
-      // Instead of error, let's update existing schedule
+      // Update existing schedule
+      console.log('Updating existing schedule:', existingSchedule._id);
+      
       await db.collection('doctorSchedules').updateOne(
         { _id: existingSchedule._id },
         { 
@@ -120,12 +140,15 @@ export async function POST(req: NextRequest) {
               patientId: null,
               appointmentId: null,
             })),
+            doctorType: doctorType || 'General',
+            department,
             updatedAt: new Date()
           }
         }
       );
       
       const updatedSchedule = await db.collection('doctorSchedules').findOne({ _id: existingSchedule._id });
+      console.log('Updated schedule:', updatedSchedule);
       
       return NextResponse.json({
         success: true,
@@ -135,9 +158,10 @@ export async function POST(req: NextRequest) {
     }
 
     const schedule = {
-      doctorId: toObjectId(doctorId),
+      doctorId: toObjectId(doctorId),  // ✅ Store as ObjectId (matches database _id field)
       doctorName,
       department,
+      doctorType: doctorType || 'General',
       date: scheduleDate,
       timeSlots: timeSlots.map((slot: any) => ({
         startTime: slot.startTime,
@@ -151,8 +175,12 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date(),
     };
 
+    console.log('Creating new schedule:', schedule);
+
     const result = await db.collection('doctorSchedules').insertOne(schedule);
     const newSchedule = await db.collection('doctorSchedules').findOne({ _id: result.insertedId });
+
+    console.log('New schedule created:', newSchedule);
 
     return NextResponse.json({
       success: true,
@@ -163,7 +191,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Create schedule error:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to create schedule' },
+      { success: false, message: 'Failed to create schedule: ' + (error instanceof Error ? error.message : 'Unknown error') },
       { status: 500 }
     );
   }

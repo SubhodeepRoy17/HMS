@@ -48,6 +48,8 @@ interface FormData {
 }
 
 export default function DoctorPrescriptionsPage() {
+  const PAGE_SIZE = 5
+
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
@@ -57,6 +59,8 @@ export default function DoctorPrescriptionsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
+  const [activePage, setActivePage] = useState(1)
+  const [historyPage, setHistoryPage] = useState(1)
   
   // Patient search
   const [searchPatientQuery, setSearchPatientQuery] = useState('')
@@ -89,6 +93,8 @@ export default function DoctorPrescriptionsPage() {
         setPrescriptions(response.data)
         setActivePrescriptions(response.data.filter((p: Prescription) => p.status === 'active'))
         setHistoryPrescriptions(response.data.filter((p: Prescription) => p.status !== 'active'))
+        setActivePage(1)
+        setHistoryPage(1)
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load prescriptions'
@@ -356,12 +362,17 @@ export default function DoctorPrescriptionsPage() {
     )
   }
 
+  const activeTotalPages = Math.max(1, Math.ceil(activePrescriptions.length / PAGE_SIZE))
+  const historyTotalPages = Math.max(1, Math.ceil(historyPrescriptions.length / PAGE_SIZE))
+  const paginatedActivePrescriptions = activePrescriptions.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE)
+  const paginatedHistoryPrescriptions = historyPrescriptions.slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE)
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-4xl font-bold tracking-tight">Prescriptions Management</h1>
         <p className="text-muted-foreground mt-2 text-base">
-          Create and manage patient prescriptions
+          View patient prescriptions
         </p>
       </div>
 
@@ -380,12 +391,6 @@ export default function DoctorPrescriptionsPage() {
         </div>
       )}
 
-      <div className="flex justify-end">
-        <Button onClick={() => setShowCreateForm(true)}>
-          <Plus className="h-4 w-4 mr-2" /> New Prescription
-        </Button>
-      </div>
-
       <Tabs defaultValue="active" className="w-full">
         <TabsList>
           <TabsTrigger value="active">Active ({activePrescriptions.length})</TabsTrigger>
@@ -402,19 +407,33 @@ export default function DoctorPrescriptionsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {activePrescriptions.length > 0 ? (
-                activePrescriptions.map((rx) => (
+                paginatedActivePrescriptions.map((rx) => (
                   <PrescriptionCard key={rx._id} rx={rx} />
                 ))
               ) : (
                 <div className="text-center py-8">
                   <Pill className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                   <p className="text-muted-foreground">No active prescriptions</p>
-                  <Button 
-                    variant="outline" 
-                    className="mt-4"
-                    onClick={() => setShowCreateForm(true)}
+                </div>
+              )}
+              {activePrescriptions.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActivePage((prev) => Math.max(1, prev - 1))}
+                    disabled={activePage === 1}
                   >
-                    <Plus className="h-4 w-4 mr-2" /> Create New Prescription
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {activePage} of {activeTotalPages}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActivePage((prev) => Math.min(activeTotalPages, prev + 1))}
+                    disabled={activePage === activeTotalPages}
+                  >
+                    Next
                   </Button>
                 </div>
               )}
@@ -430,13 +449,34 @@ export default function DoctorPrescriptionsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {historyPrescriptions.length > 0 ? (
-                historyPrescriptions.map((rx) => (
+                paginatedHistoryPrescriptions.map((rx) => (
                   <PrescriptionCard key={rx._id} rx={rx} showActions={false} />
                 ))
               ) : (
                 <div className="text-center py-8">
                   <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                   <p className="text-muted-foreground">No prescription history</p>
+                </div>
+              )}
+              {historyPrescriptions.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHistoryPage((prev) => Math.max(1, prev - 1))}
+                    disabled={historyPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {historyPage} of {historyTotalPages}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHistoryPage((prev) => Math.min(historyTotalPages, prev + 1))}
+                    disabled={historyPage === historyTotalPages}
+                  >
+                    Next
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -490,7 +530,7 @@ export default function DoctorPrescriptionsPage() {
                               setSelectedPatient(patient)
                               setFormData({
                                 ...formData,
-                                patientId: patient._id,
+                                patientId: patient.patientId,
                                 patientName: patient.demographics.fullName,
                               })
                             }}>

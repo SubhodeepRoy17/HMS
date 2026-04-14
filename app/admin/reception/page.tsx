@@ -179,7 +179,13 @@ export default function AdminReceptionPage() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline">View Details</Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => toast.info(`Patient: ${apt.patientName} | Doctor: ${apt.doctorName} | Time: ${apt.timeSlot}`)}
+                    >
+                      View Details
+                    </Button>
                   </div>
                 </div>
               ))}

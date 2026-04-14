@@ -70,7 +70,9 @@ export default function ReceptionistPatientRecordsPage() {
     consultantName: '',
     referringSource: 'Self',
     sponsorship: 'Cash',
-    consultationCharges: '',
+    collectConsultationCharge: false,
+    consultationCharge: '0',
+    paymentMethod: 'Cash',
     // IPD specific
     roomNumber: '',
     bedNumber: '',
@@ -122,7 +124,7 @@ export default function ReceptionistPatientRecordsPage() {
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.firstName || !formData.lastName || !formData.age || !formData.phone || !formData.department || !formData.consultantId) {
+    if (!formData.firstName || !formData.lastName || !formData.age || !formData.phone || !formData.email || !formData.department || !formData.consultantId) {
       toast.error('Please fill in all required fields')
       return
     }
@@ -148,7 +150,9 @@ export default function ReceptionistPatientRecordsPage() {
         consultantName: formData.consultantName,
         referringSource: formData.referringSource,
         sponsorship: formData.sponsorship,
-        consultationCharges: formData.consultationCharges ? parseInt(formData.consultationCharges) : undefined,
+        collectConsultationCharge: formData.collectConsultationCharge,
+        consultationCharge: Number(formData.consultationCharge || 0),
+        paymentMethod: formData.paymentMethod,
       }
 
       let response
@@ -166,6 +170,15 @@ export default function ReceptionistPatientRecordsPage() {
 
       if (response.success) {
         toast.success(`${patientType} patient registered successfully`)
+
+        const credentials = response.credentials || response.data?.credentials
+        if (credentials?.email && credentials?.password) {
+          toast.success(
+            `Patient login created. Email: ${credentials.email} | Password: ${credentials.password}`,
+            { duration: 12000 }
+          )
+        }
+
         // Reset form
         setFormData({
           firstName: '',
@@ -185,7 +198,9 @@ export default function ReceptionistPatientRecordsPage() {
           consultantName: '',
           referringSource: 'Self',
           sponsorship: 'Cash',
-          consultationCharges: '',
+          collectConsultationCharge: false,
+          consultationCharge: '0',
+          paymentMethod: 'Cash',
           roomNumber: '',
           bedNumber: '',
           expectedDischargeDate: '',
@@ -222,6 +237,45 @@ export default function ReceptionistPatientRecordsPage() {
       cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
     }
     return <Badge className={variants[status] || 'bg-gray-100 text-gray-800'}>{status}</Badge>
+  }
+
+  const handlePrintRegistration = (patient: PatientRecord) => {
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    const title = patient.patientType === 'OPD' ? 'OPD Card' : 'Admission Form'
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${title} - ${patient.patientId}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; }
+            h1 { margin-bottom: 4px; }
+            .muted { color: #666; margin-bottom: 20px; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+            .field { border: 1px solid #ddd; border-radius: 6px; padding: 10px; }
+            .label { font-size: 12px; color: #666; }
+            .value { font-weight: 600; }
+            .full { grid-column: 1 / span 2; }
+          </style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          <p class="muted">Hospital Management System</p>
+          <div class="grid">
+            <div class="field"><div class="label">Patient ID</div><div class="value">${patient.patientId}</div></div>
+            <div class="field"><div class="label">Registration Number</div><div class="value">${patient.registrationNumber}</div></div>
+            <div class="field"><div class="label">Name</div><div class="value">${patient.demographics.fullName}</div></div>
+            <div class="field"><div class="label">Age / Sex</div><div class="value">${patient.demographics.age} / ${patient.demographics.sex}</div></div>
+            <div class="field"><div class="label">Phone</div><div class="value">${patient.demographics.phone}</div></div>
+            <div class="field"><div class="label">Department</div><div class="value">${patient.department}</div></div>
+            <div class="field full"><div class="label">Consultant</div><div class="value">${patient.consultantName}</div></div>
+          </div>
+          <script>window.print()</script>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
   }
 
   if (!isClient) {
@@ -293,7 +347,13 @@ export default function ReceptionistPatientRecordsPage() {
                       <Button size="sm" variant="outline" onClick={() => handleViewPatient(patient)}>
                         View
                       </Button>
-                      <Button size="sm" variant="outline">Edit</Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => toast.info('Patient edit form will be enabled in next iteration. Use View for details currently.')}
+                      >
+                        Edit
+                      </Button>
                     </div>
                   </div>
                 ))
@@ -430,12 +490,13 @@ export default function ReceptionistPatientRecordsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2">Email</label>
+                      <label className="block text-sm font-medium mb-2">Email *</label>
                       <input
                         type="email"
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         className="w-full px-3 py-2 border rounded-md bg-background"
+                        required
                       />
                     </div>
                     <div>
@@ -548,16 +609,50 @@ export default function ReceptionistPatientRecordsPage() {
                         className="w-full px-3 py-2 border rounded-md bg-background"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Consultation Charges</label>
-                      <input
-                        type="number"
-                        value={formData.consultationCharges}
-                        onChange={(e) => setFormData({ ...formData, consultationCharges: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-md bg-background"
-                        placeholder="Enter amount"
-                      />
-                    </div>
+
+                    {patientType === 'OPD' && (
+                      <>
+                        <div className="md:col-span-2 flex items-center gap-2">
+                          <input
+                            id="collectConsultationCharge"
+                            type="checkbox"
+                            checked={formData.collectConsultationCharge}
+                            onChange={(e) => setFormData({ ...formData, collectConsultationCharge: e.target.checked })}
+                          />
+                          <label htmlFor="collectConsultationCharge" className="text-sm font-medium">
+                            Collect consultation charge at registration and generate receipt
+                          </label>
+                        </div>
+
+                        {formData.collectConsultationCharge && (
+                          <>
+                            <div>
+                              <label className="block text-sm font-medium mb-2">Consultation Charge</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={formData.consultationCharge}
+                                onChange={(e) => setFormData({ ...formData, consultationCharge: e.target.value })}
+                                className="w-full px-3 py-2 border rounded-md bg-background"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium mb-2">Payment Method</label>
+                              <select
+                                value={formData.paymentMethod}
+                                onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
+                                className="w-full px-3 py-2 border rounded-md bg-background"
+                              >
+                                <option>Cash</option>
+                                <option>Card</option>
+                                <option>UPI</option>
+                                <option>Online</option>
+                              </select>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -689,6 +784,12 @@ export default function ReceptionistPatientRecordsPage() {
                     <p className="font-semibold">{selectedPatient.demographics.address}</p>
                   </div>
                 )}
+
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" className="flex-1" onClick={() => handlePrintRegistration(selectedPatient)}>
+                    Print {selectedPatient.patientType === 'OPD' ? 'OPD Card' : 'Admission Form'}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

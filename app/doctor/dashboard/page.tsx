@@ -132,12 +132,20 @@ export default function DoctorDashboard() {
         pendingReports: 0,
       })
       
-      // Set recent patients (would come from API)
-      setRecentPatients([
-        { _id: '1', name: 'John Doe', lastVisit: '2024-03-25', condition: 'Hypertension' },
-        { _id: '2', name: 'Jane Smith', lastVisit: '2024-03-24', condition: 'Diabetes Type 2' },
-        { _id: '3', name: 'Robert Brown', lastVisit: '2024-03-23', condition: 'Respiratory Infection' },
-      ])
+      const recentFromAppointments = new Map<string, RecentPatient>()
+      if (appointmentsRes.success && appointmentsRes.data) {
+        appointmentsRes.data.forEach((a: any) => {
+          if (!recentFromAppointments.has(a.patientId)) {
+            recentFromAppointments.set(a.patientId, {
+              _id: a.patientId,
+              name: a.patientName,
+              lastVisit: a.appointmentDate,
+              condition: a.reason || 'Consultation',
+            })
+          }
+        })
+      }
+      setRecentPatients(Array.from(recentFromAppointments.values()).slice(0, 3))
       
     } catch (error) {
       console.error('Error loading dashboard:', error)
@@ -208,18 +216,6 @@ export default function DoctorDashboard() {
           <p className="text-muted-foreground mt-2 text-base">
             Manage your patients, appointments, and prescriptions
           </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/doctor/patients/search">
-            <Button variant="outline">
-              <Search className="h-4 w-4 mr-2" /> Search Patient
-            </Button>
-          </Link>
-          <Link href="/doctor/prescriptions?tab=create">
-            <Button>
-              <UserPlus className="h-4 w-4 mr-2" /> New Prescription
-            </Button>
-          </Link>
         </div>
       </div>
 
@@ -352,7 +348,13 @@ export default function DoctorDashboard() {
                           <Button size="sm">View Records</Button>
                         </Link>
                       )}
-                      <Button size="sm" variant="outline">Details</Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => toast.info(`Patient: ${apt.patientName} | Reason: ${apt.reason} | Time: ${apt.timeSlot}`)}
+                      >
+                        Details
+                      </Button>
                     </div>
                   </div>
                 ))
@@ -364,51 +366,9 @@ export default function DoctorDashboard() {
               )}
             </CardContent>
           </Card>
-
-          {/* Recent Prescriptions */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Recent Prescriptions</CardTitle>
-                <CardDescription>Latest medications prescribed</CardDescription>
-              </div>
-              <Link href="/doctor/prescriptions">
-                <Button variant="ghost" size="sm">
-                  View All <ArrowRight className="h-4 w-4 ml-1" />
-                </Button>
-              </Link>
-            </CardHeader>
-            <CardContent>
-              {recentPrescriptions.length > 0 ? (
-                <div className="space-y-3">
-                  {recentPrescriptions.map((presc) => (
-                    <div key={presc._id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
-                        <p className="font-semibold">{presc.patientName}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {presc.medication} - {presc.dosage}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {new Date(presc.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <Badge className={presc.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100'}>
-                        {presc.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <p className="text-muted-foreground">No prescriptions yet</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
 
-        {/* Right Column - Recent Patients & Quick Actions */}
+        {/* Right Column - Recent Patients */}
         <div className="space-y-6">
           {/* Recent Patients */}
           <Card>
@@ -438,56 +398,50 @@ export default function DoctorDashboard() {
               ))}
             </CardContent>
           </Card>
-
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>Common tasks</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Link href="/doctor/prescriptions?tab=create">
-                <Button variant="outline" className="w-full justify-start">
-                  <Pill className="h-4 w-4 mr-2" />
-                  Write Prescription
-                </Button>
-              </Link>
-              <Link href="/doctor/medical-records?tab=create">
-                <Button variant="outline" className="w-full justify-start">
-                  <ClipboardList className="h-4 w-4 mr-2" />
-                  Add Medical Record
-                </Button>
-              </Link>
-              <Link href="/doctor/appointments">
-                <Button variant="outline" className="w-full justify-start">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Manage Appointments
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-
-          {/* Today's Summary */}
-          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-white dark:bg-slate-800">
-                  <Brain className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold">Day Summary</p>
-                  <p className="text-xs text-muted-foreground">
-                    {stats.todayAppointments} appointments • {stats.completedAppointments} completed
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {stats.activePrescriptions} active prescriptions
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
+
+      {/* Recent Prescriptions - Full Width */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Recent Prescriptions</CardTitle>
+            <CardDescription>Latest medications prescribed</CardDescription>
+          </div>
+          <Link href="/doctor/prescriptions">
+            <Button variant="ghost" size="sm">
+              View All <ArrowRight className="h-4 w-4 ml-1" />
+            </Button>
+          </Link>
+        </CardHeader>
+        <CardContent>
+          {recentPrescriptions.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {recentPrescriptions.map((presc) => (
+                <div key={presc._id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="font-semibold">{presc.patientName}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {presc.medication} - {presc.dosage}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {new Date(presc.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Badge className={presc.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100'}>
+                    {presc.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+              <p className="text-muted-foreground">No prescriptions yet</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

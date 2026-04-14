@@ -20,6 +20,8 @@ export interface Concession {
 export interface Bill {
   _id?: ObjectId;
   billNumber: string;
+  billType: 'consultation' | 'lab';
+  appointmentId?: ObjectId;
   patientId: ObjectId;
   patientName: string;
   registrationId?: ObjectId; // Link to OPD/IPD registration

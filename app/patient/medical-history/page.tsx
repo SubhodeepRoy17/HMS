@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { History, AlertCircle, Loader2, FileText, Pill, AlertTriangle, Plus } from 'lucide-react'
+import { History, AlertCircle, Loader2, FileText, Pill, AlertTriangle } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { patientApi, doctorApi } from '@/lib/api-client'
+import { patientApi } from '@/lib/api-client'
 import { useAuth } from '@/context/auth-context'
 import { toast } from 'sonner'
 
@@ -57,6 +57,8 @@ interface Prescription {
 }
 
 export default function PatientMedicalHistoryPage() {
+  const PAGE_SIZE = 5
+
   const { user } = useAuth()
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -65,6 +67,11 @@ export default function PatientMedicalHistoryPage() {
   const [allergies, setAllergies] = useState<Allergy[]>([])
   const [familyHistory, setFamilyHistory] = useState<FamilyHistory[]>([])
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
+  const [conditionsPage, setConditionsPage] = useState(1)
+  const [medicationsPage, setMedicationsPage] = useState(1)
+  const [prescriptionsPage, setPrescriptionsPage] = useState(1)
+  const [allergiesPage, setAllergiesPage] = useState(1)
+  const [familyPage, setFamilyPage] = useState(1)
   const [showAddForm, setShowAddForm] = useState(false)
   const [formType, setFormType] = useState<'condition' | 'allergy' | 'family'>('condition')
   const [formData, setFormData] = useState({
@@ -88,86 +95,59 @@ export default function PatientMedicalHistoryPage() {
   const loadMedicalHistory = async () => {
     try {
       setIsLoading(true)
-      
-      // Get prescriptions from doctor API (patient-specific)
-      const prescriptionsRes = await doctorApi.getPrescriptions(user?._id)
-      if (prescriptionsRes.success && prescriptionsRes.data) {
-        setPrescriptions(prescriptionsRes.data)
+      const historyRes = await patientApi.getMedicalHistory()
+
+      if (historyRes.success && historyRes.data) {
+        const historyData = historyRes.data as any
+        const fetchedPrescriptions = historyData.prescriptions || []
+        const fetchedRecords = historyData.medicalRecords || []
+
+        setPrescriptions(
+          fetchedPrescriptions.map((p: any) => ({
+            _id: p._id,
+            medication: p.medication,
+            dosage: p.dosage,
+            frequency: p.frequency,
+            duration: p.duration,
+            prescribedDate: p.createdAt,
+            status: p.status,
+          }))
+        )
+
+        setConditions(
+          fetchedRecords.map((record: any) => ({
+            _id: record._id,
+            condition: record.recordType,
+            diagnosedDate: record.createdAt,
+            status: record.status === 'inactive' ? 'resolved' : 'active',
+            doctor: record.doctorName || 'Doctor',
+            notes: record.description,
+          }))
+        )
+
+        setMedications(
+          fetchedPrescriptions
+            .filter((p: any) => p.status === 'active')
+            .map((p: any) => ({
+              _id: p._id,
+              name: p.medication,
+              dosage: p.dosage,
+              frequency: p.frequency,
+              startDate: p.createdAt,
+              endDate: undefined,
+              status: p.status,
+              prescribedBy: p.doctorName || 'Doctor',
+            }))
+        )
       }
-      
-      // For demo, set some sample data (in production, these would come from dedicated patient history APIs)
-      setConditions([
-        {
-          _id: '1',
-          condition: 'Hypertension',
-          diagnosedDate: '2023-06-15',
-          status: 'active',
-          doctor: 'Dr. Sarah Johnson',
-          notes: 'Monitor blood pressure regularly'
-        },
-        {
-          _id: '2',
-          condition: 'Type 2 Diabetes',
-          diagnosedDate: '2023-09-20',
-          status: 'under-treatment',
-          doctor: 'Dr. Michael Chen',
-          notes: 'Maintain blood sugar levels'
-        }
-      ])
-      
-      setMedications([
-        {
-          _id: '1',
-          name: 'Lisinopril',
-          dosage: '10mg',
-          frequency: 'Once daily',
-          startDate: '2023-06-15',
-          status: 'active',
-          prescribedBy: 'Dr. Sarah Johnson'
-        },
-        {
-          _id: '2',
-          name: 'Metformin',
-          dosage: '500mg',
-          frequency: 'Twice daily',
-          startDate: '2023-09-20',
-          status: 'active',
-          prescribedBy: 'Dr. Michael Chen'
-        }
-      ])
-      
-      setAllergies([
-        {
-          _id: '1',
-          name: 'Penicillin',
-          severity: 'Severe',
-          reaction: 'Anaphylaxis, difficulty breathing',
-          recordedDate: '2020-01-10'
-        },
-        {
-          _id: '2',
-          name: 'Shellfish',
-          severity: 'Moderate',
-          reaction: 'Hives, swelling',
-          recordedDate: '2021-03-15'
-        }
-      ])
-      
-      setFamilyHistory([
-        {
-          _id: '1',
-          relation: 'Father',
-          condition: 'Heart Disease',
-          ageAtDiagnosis: 55,
-          notes: 'Under medication'
-        },
-        {
-          _id: '2',
-          relation: 'Mother',
-          condition: 'Diabetes',
-          ageAtDiagnosis: 50
-        }
-      ])
+
+      setAllergies([])
+      setFamilyHistory([])
+      setConditionsPage(1)
+      setMedicationsPage(1)
+      setPrescriptionsPage(1)
+      setAllergiesPage(1)
+      setFamilyPage(1)
       
     } catch (error) {
       console.error('Error loading medical history:', error)
@@ -225,6 +205,20 @@ export default function PatientMedicalHistoryPage() {
     return <div className="h-96 bg-muted animate-pulse rounded-lg" />
   }
 
+  const activeMedications = medications.filter((m) => m.status === 'active')
+
+  const conditionsTotalPages = Math.max(1, Math.ceil(conditions.length / PAGE_SIZE))
+  const medicationsTotalPages = Math.max(1, Math.ceil(activeMedications.length / PAGE_SIZE))
+  const prescriptionsTotalPages = Math.max(1, Math.ceil(prescriptions.length / PAGE_SIZE))
+  const allergiesTotalPages = Math.max(1, Math.ceil(allergies.length / PAGE_SIZE))
+  const familyTotalPages = Math.max(1, Math.ceil(familyHistory.length / PAGE_SIZE))
+
+  const paginatedConditions = conditions.slice((conditionsPage - 1) * PAGE_SIZE, conditionsPage * PAGE_SIZE)
+  const paginatedMedications = activeMedications.slice((medicationsPage - 1) * PAGE_SIZE, medicationsPage * PAGE_SIZE)
+  const paginatedPrescriptions = prescriptions.slice((prescriptionsPage - 1) * PAGE_SIZE, prescriptionsPage * PAGE_SIZE)
+  const paginatedAllergies = allergies.slice((allergiesPage - 1) * PAGE_SIZE, allergiesPage * PAGE_SIZE)
+  const paginatedFamilyHistory = familyHistory.slice((familyPage - 1) * PAGE_SIZE, familyPage * PAGE_SIZE)
+
   return (
     <div className="space-y-8">
       <div>
@@ -263,12 +257,6 @@ export default function PatientMedicalHistoryPage() {
                   <CardTitle>Medical Conditions</CardTitle>
                   <CardDescription>Your diagnosed medical conditions</CardDescription>
                 </div>
-                <Button size="sm" onClick={() => {
-                  setFormType('condition')
-                  setShowAddForm(true)
-                }}>
-                  <Plus className="h-4 w-4 mr-1" /> Add Condition
-                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -277,7 +265,7 @@ export default function PatientMedicalHistoryPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : conditions.length > 0 ? (
-                conditions.map((condition) => (
+                paginatedConditions.map((condition) => (
                   <div key={condition._id} className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
@@ -293,13 +281,26 @@ export default function PatientMedicalHistoryPage() {
                         </p>
                       )}
                     </div>
-                    <Button size="sm" variant="outline">View Details</Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => toast.info(`${condition.condition} | ${condition.notes || 'No additional notes'}`)}
+                    >
+                      View Details
+                    </Button>
                   </div>
                 ))
               ) : (
                 <div className="text-center py-8">
                   <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                   <p className="text-muted-foreground">No medical conditions recorded</p>
+                </div>
+              )}
+              {conditions.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setConditionsPage((prev) => Math.max(1, prev - 1))} disabled={conditionsPage === 1}>Previous</Button>
+                  <span className="text-sm text-muted-foreground">Page {conditionsPage} of {conditionsTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setConditionsPage((prev) => Math.min(conditionsTotalPages, prev + 1))} disabled={conditionsPage === conditionsTotalPages}>Next</Button>
                 </div>
               )}
             </CardContent>
@@ -314,7 +315,7 @@ export default function PatientMedicalHistoryPage() {
               <CardDescription>Medications you are currently taking</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {medications.filter(m => m.status === 'active').map((med) => (
+              {paginatedMedications.map((med) => (
                 <div key={med._id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
@@ -331,10 +332,17 @@ export default function PatientMedicalHistoryPage() {
                   </div>
                 </div>
               ))}
-              {medications.filter(m => m.status === 'active').length === 0 && (
+              {activeMedications.length === 0 && (
                 <div className="text-center py-8">
                   <Pill className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                   <p className="text-muted-foreground">No active medications</p>
+                </div>
+              )}
+              {activeMedications.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setMedicationsPage((prev) => Math.max(1, prev - 1))} disabled={medicationsPage === 1}>Previous</Button>
+                  <span className="text-sm text-muted-foreground">Page {medicationsPage} of {medicationsTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setMedicationsPage((prev) => Math.min(medicationsTotalPages, prev + 1))} disabled={medicationsPage === medicationsTotalPages}>Next</Button>
                 </div>
               )}
             </CardContent>
@@ -349,7 +357,7 @@ export default function PatientMedicalHistoryPage() {
               <CardDescription>All your prescriptions from doctors</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {prescriptions.map((presc) => (
+              {paginatedPrescriptions.map((presc) => (
                 <div key={presc._id} className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                   <div className="flex-1">
                     <h3 className="font-semibold">{presc.medication}</h3>
@@ -369,6 +377,13 @@ export default function PatientMedicalHistoryPage() {
                   <p className="text-muted-foreground">No prescriptions found</p>
                 </div>
               )}
+              {prescriptions.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setPrescriptionsPage((prev) => Math.max(1, prev - 1))} disabled={prescriptionsPage === 1}>Previous</Button>
+                  <span className="text-sm text-muted-foreground">Page {prescriptionsPage} of {prescriptionsTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setPrescriptionsPage((prev) => Math.min(prescriptionsTotalPages, prev + 1))} disabled={prescriptionsPage === prescriptionsTotalPages}>Next</Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -382,16 +397,10 @@ export default function PatientMedicalHistoryPage() {
                   <CardTitle>Allergies</CardTitle>
                   <CardDescription>Known allergies and sensitivities</CardDescription>
                 </div>
-                <Button size="sm" onClick={() => {
-                  setFormType('allergy')
-                  setShowAddForm(true)
-                }}>
-                  <Plus className="h-4 w-4 mr-1" /> Add Allergy
-                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {allergies.map((allergy) => (
+              {paginatedAllergies.map((allergy) => (
                 <div key={allergy._id} className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -406,6 +415,16 @@ export default function PatientMedicalHistoryPage() {
                   </p>
                 </div>
               ))}
+              {allergies.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">No allergies recorded</div>
+              )}
+              {allergies.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setAllergiesPage((prev) => Math.max(1, prev - 1))} disabled={allergiesPage === 1}>Previous</Button>
+                  <span className="text-sm text-muted-foreground">Page {allergiesPage} of {allergiesTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setAllergiesPage((prev) => Math.min(allergiesTotalPages, prev + 1))} disabled={allergiesPage === allergiesTotalPages}>Next</Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -419,16 +438,10 @@ export default function PatientMedicalHistoryPage() {
                   <CardTitle>Family Medical History</CardTitle>
                   <CardDescription>Medical conditions in your family</CardDescription>
                 </div>
-                <Button size="sm" onClick={() => {
-                  setFormType('family')
-                  setShowAddForm(true)
-                }}>
-                  <Plus className="h-4 w-4 mr-1" /> Add Record
-                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {familyHistory.map((record) => (
+              {paginatedFamilyHistory.map((record) => (
                 <div key={record._id} className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                   <h4 className="font-semibold">{record.relation}</h4>
                   <p className="text-sm text-muted-foreground mt-1">
@@ -439,6 +452,16 @@ export default function PatientMedicalHistoryPage() {
                   )}
                 </div>
               ))}
+              {familyHistory.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">No family history recorded</div>
+              )}
+              {familyHistory.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setFamilyPage((prev) => Math.max(1, prev - 1))} disabled={familyPage === 1}>Previous</Button>
+                  <span className="text-sm text-muted-foreground">Page {familyPage} of {familyTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setFamilyPage((prev) => Math.min(familyTotalPages, prev + 1))} disabled={familyPage === familyTotalPages}>Next</Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

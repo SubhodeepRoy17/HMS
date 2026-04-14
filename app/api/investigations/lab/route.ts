@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     let filter: any = {};
 
     if (patientId) {
-      filter.patientId = toObjectId(patientId);
+      filter.patientId = patientId;
     }
     if (status && status !== 'all') {
       filter.status = status;
@@ -48,7 +48,29 @@ export async function GET(req: NextRequest) {
 
     // Role-based filtering
     if (user.role === 'patient') {
-      filter.patientId = toObjectId(user.userId);
+      if (user.patientId) {
+        filter.patientId = user.patientId;
+      } else {
+        const patientRegistration = await db.collection('patientRegistrations').findOne(
+          { userId: toObjectId(user.userId) },
+          { sort: { registrationDate: -1 } }
+        );
+
+        if (!patientRegistration?.patientId) {
+          return NextResponse.json({
+            success: true,
+            data: [],
+            pagination: {
+              page,
+              limit,
+              total: 0,
+              pages: 0,
+            },
+          });
+        }
+
+        filter.patientId = patientRegistration.patientId;
+      }
     }
 
     const total = await db.collection('investigations').countDocuments(filter);
@@ -83,9 +105,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = extractAndVerifyAuth(req);
-    if (!user || (user.role !== 'doctor' && user.role !== 'admin')) {
+    if (!user || (user.role !== 'doctor' && user.role !== 'admin' && user.role !== 'receptionist')) {
       return NextResponse.json(
-        { success: false, message: 'Unauthorized - Only doctors can order tests' },
+        { success: false, message: 'Unauthorized - Only authorized clinical users can order tests' },
         { status: 403 }
       );
     }
@@ -128,12 +150,14 @@ export async function POST(req: NextRequest) {
         referenceRange: param.referenceRange,
         isAbnormal: false,
         interpretation: null,
+        formula: param.formula || null,
+        options: param.options || null,
       }));
     }
 
     const investigation = {
       investigationId,
-      patientId: toObjectId(patientId),
+      patientId,
       patientName,
       patientAge: patientAge || 0,
       patientGender: patientGender || 'Other',

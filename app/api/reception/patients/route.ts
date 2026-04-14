@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = extractAndVerifyAuth(req);
-    if (!user || (user.role !== 'receptionist' && user.role !== 'admin')) {
+    if (!user || user.role !== 'receptionist') {
       return NextResponse.json(
         { success: false, message: 'Unauthorized' },
         { status: 403 }
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       department, consultantId, consultantName,
       referringSource, sponsorship, panelDetails,
       patientType, // 'OPD' or 'IPD'
-      roomNumber, bedNumber, consultationCharges
+      roomNumber, bedNumber
     } = body;
 
     // Validate required fields
@@ -212,7 +212,6 @@ export async function POST(req: NextRequest) {
       roomNumber: patientType === 'IPD' ? roomNumber : undefined,
       bedNumber: patientType === 'IPD' ? bedNumber : undefined,
       admissionDate: patientType === 'IPD' ? new Date() : undefined,
-      consultationCharges: consultationCharges || 0,
       paymentStatus: 'pending',
       status: 'active',
       registrationDate: new Date(),

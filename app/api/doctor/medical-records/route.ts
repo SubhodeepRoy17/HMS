@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     const filter: any = { doctorId: new ObjectId(user.userId) };
     
     if (patientId) {
-      filter.patientId = new ObjectId(patientId);
+      filter.patientId = patientId;
     }
     
     if (recordType && recordType !== 'all') {
@@ -103,10 +103,10 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { patientId, patientName, recordType, description, findings, status } = body;
+    const { patientId, recordType, description, findings, status } = body;
 
     // Validate required fields
-    if (!patientId || !patientName || !recordType || !description) {
+    if (!patientId || !recordType || !description) {
       return NextResponse.json(
         { success: false, message: 'Missing required fields' },
         { status: 400 }
@@ -115,11 +115,11 @@ export async function POST(req: NextRequest) {
 
     const { db } = await connectToDatabase();
 
-    // Verify patient exists
-    const patient = await db.collection('users').findOne({ 
-      _id: new ObjectId(patientId),
-      role: 'patient'
-    });
+    // Verify patient exists from registration and derive display name
+    const patient = await db.collection('patientRegistrations').findOne(
+      { patientId },
+      { sort: { registrationDate: -1 } }
+    );
 
     if (!patient) {
       return NextResponse.json(
@@ -128,10 +128,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const patientName = patient.demographics?.fullName || `${patient.demographics?.firstName || ''} ${patient.demographics?.lastName || ''}`.trim();
+
     // Create medical record
     const result = await db.collection('medicalRecords').insertOne({
       doctorId: new ObjectId(user.userId),
-      patientId: new ObjectId(patientId),
+      patientId,
       patientName,
       recordType,
       description,

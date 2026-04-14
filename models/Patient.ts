@@ -44,7 +44,6 @@ export interface PatientRegistration {
   admittingDoctorId?: ObjectId;
   
   // Billing
-  consultationCharges?: number;
   paymentStatus: 'pending' | 'partial' | 'paid';
   receiptNumber?: string;
   

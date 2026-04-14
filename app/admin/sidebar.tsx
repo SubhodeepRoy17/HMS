@@ -7,10 +7,8 @@ import {
   BarChart3,
   ClipboardList,
   FileText,
-  Heart,
   Menu,
   Stethoscope,
-  Users,
   X,
   Home,
   Settings,
@@ -26,12 +24,10 @@ interface NavigationItem {
 
 const adminNavigation: NavigationItem[] = [
   { label: 'Dashboard', href: '/admin/dashboard', icon: Home },
-  { label: 'Reception', href: '/admin/reception', icon: Users },
-  { label: 'Patient Registration', href: '/admin/registration', icon: Heart },
   { label: 'Out Patient Dept', href: '/admin/outpatient', icon: FileText },
-  { label: 'OPD Billing', href: '/admin/billing', icon: BarChart3 },
+  { label: 'Billing', href: '/admin/billing', icon: BarChart3 },
   { label: 'Investigations', href: '/admin/investigations', icon: ClipboardList },
-  { label: 'System Settings', href: '/admin/settings', icon: Settings },
+  { label: 'Settings', href: '/admin/settings', icon: Settings },
 ]
 
 export function AdminSidebar() {
@@ -85,7 +81,7 @@ export function AdminSidebar() {
         <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
           {adminNavigation.map((item) => {
             const Icon = item.icon
-            const isActive = pathname === item.href
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
             return (
               <Link key={item.href} href={item.href}>
                 <Button

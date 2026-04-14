@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     const filter: any = { doctorId: new ObjectId(user.userId) };
     
     if (patientId) {
-      filter.patientId = new ObjectId(patientId);
+      filter.patientId = patientId;
     }
     
     if (status && status !== 'all') {
@@ -93,23 +93,36 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { patientId, patientName, medication, dosage, frequency, duration, instructions, status } = body;
+    const { appointmentId, patientId, medication, dosage, frequency, duration, instructions, status } = body;
 
     // Validate required fields
-    if (!patientId || !patientName || !medication || !dosage || !frequency) {
+    if (!appointmentId || !patientId || !medication || !dosage || !frequency) {
       return NextResponse.json(
-        { success: false, message: 'Missing required fields' },
+        { success: false, message: 'appointmentId, patientId, medication, dosage and frequency are required' },
         { status: 400 }
       );
     }
 
     const { db } = await connectToDatabase();
 
-    // Verify patient exists
-    const patient = await db.collection('users').findOne({ 
-      _id: new ObjectId(patientId),
-      role: 'patient'
+    const appointment = await db.collection('appointments').findOne({
+      _id: new ObjectId(appointmentId),
+      doctorId: new ObjectId(user.userId),
+      patientId,
     });
+
+    if (!appointment) {
+      return NextResponse.json(
+        { success: false, message: 'Prescription can only be created for your own consultation appointment' },
+        { status: 403 }
+      );
+    }
+
+    // Verify patient exists from registration and derive display name
+    const patient = await db.collection('patientRegistrations').findOne(
+      { patientId },
+      { sort: { registrationDate: -1 } }
+    );
 
     if (!patient) {
       return NextResponse.json(
@@ -118,10 +131,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const patientName = patient.demographics?.fullName || `${patient.demographics?.firstName || ''} ${patient.demographics?.lastName || ''}`.trim();
+
     // Create prescription
     const result = await db.collection('prescriptions').insertOne({
       doctorId: new ObjectId(user.userId),
-      patientId: new ObjectId(patientId),
+      appointmentId: new ObjectId(appointmentId),
+      patientId,
       patientName,
       medication,
       dosage,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase, getNextSequence, generateId, toObjectId } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { verifyToken, generateTempPassword, hashPassword } from '@/lib/auth';
 
 function extractAndVerifyAuth(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -18,7 +18,7 @@ function extractAndVerifyAuth(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = extractAndVerifyAuth(req);
-    if (!user || (user.role !== 'receptionist' && user.role !== 'admin')) {
+    if (!user || user.role !== 'receptionist') {
       return NextResponse.json(
         { success: false, message: 'Unauthorized' },
         { status: 403 }
@@ -32,11 +32,13 @@ export async function POST(req: NextRequest) {
       nationality, emergencyContact,
       department, consultantId, consultantName,
       referringSource, sponsorship, panelDetails,
-      consultationCharges
+      collectConsultationCharge = false,
+      consultationCharge = 0,
+      paymentMethod = 'Cash',
     } = body;
 
     // Validate required fields
-    if (!firstName || !lastName || !age || !sex || !phone || !department || !consultantId) {
+    if (!firstName || !lastName || !age || !sex || !phone || !email || !department || !consultantId) {
       return NextResponse.json(
         { success: false, message: 'Missing required fields' },
         { status: 400 }
@@ -58,14 +60,52 @@ export async function POST(req: NextRequest) {
     });
 
     let finalPatientId = patientId;
+    let userId = null;
+    let credentials: { email: string; password: string } | null = null;
+
     if (existingPatient) {
       finalPatientId = existingPatient.patientId;
+      userId = existingPatient.userId || null;
+    } else {
+      const loginEmail = email.toLowerCase();
+      const existingUser = await db.collection('users').findOne({
+        $or: [
+          { email: loginEmail },
+          { phone }
+        ]
+      });
+
+      if (existingUser) {
+        userId = existingUser._id;
+      } else {
+        const tempPassword = generateTempPassword(firstName, lastName);
+        const passwordHash = await hashPassword(tempPassword);
+        const createdUser = await db.collection('users').insertOne({
+          firstName,
+          lastName,
+          email: loginEmail,
+          password: passwordHash,
+          phone,
+          role: 'patient',
+          isActive: true,
+          isEmailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        userId = createdUser.insertedId;
+        credentials = {
+          email: loginEmail,
+          password: tempPassword,
+        };
+      }
     }
 
     // Create OPD registration
     const registration = {
       patientId: finalPatientId,
       registrationNumber,
+      userId,
       patientType: 'OPD',
       demographics: {
         firstName,
@@ -89,7 +129,6 @@ export async function POST(req: NextRequest) {
       referringSource: referringSource || 'Self',
       sponsorship: sponsorship || 'Cash',
       panelDetails: panelDetails || '',
-      consultationCharges: consultationCharges || 0,
       paymentStatus: 'pending',
       status: 'active',
       registrationDate: new Date(),
@@ -117,14 +156,84 @@ export async function POST(req: NextRequest) {
 
     await db.collection('opdCards').insertOne(opdCard);
 
+    let consultationBill: any = null;
+    let consultationReceipt: any = null;
+
+    if (collectConsultationCharge && Number(consultationCharge) > 0) {
+      const billSeq = await getNextSequence(db, 'billNumber');
+      const billNumber = generateId('BILL', billSeq);
+      const amount = Number(consultationCharge);
+
+      const billDoc = {
+        billNumber,
+        billType: 'consultation',
+        patientId: finalPatientId,
+        patientName: `${firstName} ${lastName}`,
+        registrationId: result.insertedId,
+        patientType: 'General',
+        paymentType: paymentMethod,
+        timeSlot: 'Morning',
+        doctorType: 'General',
+        services: [
+          {
+            id: `CONS-${Date.now()}`,
+            description: 'OPD Registration Consultation',
+            category: 'consultation',
+            quantity: 1,
+            rate: amount,
+            total: amount,
+          },
+        ],
+        subTotal: amount,
+        tax: 0,
+        concession: { percentage: 0, amount: 0, authority: '' },
+        totalAmount: amount,
+        amountPaid: amount,
+        balanceDue: 0,
+        status: 'paid',
+        createdBy: toObjectId(user.userId),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const billInsert = await db.collection('bills').insertOne(billDoc);
+      consultationBill = await db.collection('bills').findOne({ _id: billInsert.insertedId });
+
+      const receiptSeq = await getNextSequence(db, 'receiptNumber');
+      const receiptNumber = generateId('RCT', receiptSeq);
+
+      const receiptDoc = {
+        receiptNumber,
+        billId: billInsert.insertedId,
+        patientId: finalPatientId,
+        patientName: `${firstName} ${lastName}`,
+        amount,
+        paymentMethod,
+        transactionId: null,
+        paymentDate: new Date(),
+        printedDate: new Date(),
+        printedBy: toObjectId(user.userId),
+        status: 'completed',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const receiptInsert = await db.collection('receipts').insertOne(receiptDoc);
+      consultationReceipt = await db.collection('receipts').findOne({ _id: receiptInsert.insertedId });
+    }
+
     const newRegistration = await db.collection('patientRegistrations').findOne({ _id: result.insertedId });
 
     return NextResponse.json({
       success: true,
       message: 'OPD patient registered successfully',
+      credentials,
       data: {
         registration: newRegistration,
         opdCard,
+        consultationBill,
+        consultationReceipt,
+        credentials,
       },
     }, { status: 201 });
 

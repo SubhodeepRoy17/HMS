@@ -9,6 +9,7 @@ interface ProtectedRouteProps {
   children: ReactNode;
   requiredRoles?: string[];
   fallback?: ReactNode;
+  loginPath?: string;
 }
 
 /**
@@ -20,15 +21,16 @@ export function ProtectedRoute({
   children,
   requiredRoles,
   fallback,
+  loginPath = '/auth',
 }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.push('/auth');
+      router.push(loginPath);
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, loginPath, router]);
 
   // Check role-based access
   if (

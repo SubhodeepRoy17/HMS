@@ -22,10 +22,23 @@ interface Appointment {
   reason: string
   status: 'scheduled' | 'arrived' | 'in-progress' | 'completed' | 'cancelled' | 'no-show'
   notes?: string
+  doctorSummary?: string
   createdAt: string
 }
 
+interface MedicineEntry {
+  medication: string
+  dosage: string
+  frequency: string
+  duration: string
+  quantity: string
+  rate: string
+  instructions: string
+}
+
 export default function DoctorAppointmentsPage() {
+  const PAGE_SIZE = 5
+
   const { user } = useAuth()
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -34,6 +47,25 @@ export default function DoctorAppointmentsPage() {
   const [completedAppointments, setCompletedAppointments] = useState<Appointment[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+  const [showCompleteModal, setShowCompleteModal] = useState(false)
+  const [completingAppointment, setCompletingAppointment] = useState<Appointment | null>(null)
+  const [scheduledPage, setScheduledPage] = useState(1)
+  const [inProgressPage, setInProgressPage] = useState(1)
+  const [completedPage, setCompletedPage] = useState(1)
+  const [consultationSummary, setConsultationSummary] = useState('')
+  const [consultationFee, setConsultationFee] = useState('200')
+  const [opdConsultation, setOpdConsultation] = useState({
+    complaints: '',
+    history: '',
+    diagnosis: '',
+    investigation: '',
+    medicines: '',
+    advice: '',
+    nextVisit: '',
+  })
+  const [medicines, setMedicines] = useState<MedicineEntry[]>([
+    { medication: '', dosage: '', frequency: '', duration: '', quantity: '1', rate: '0', instructions: '' },
+  ])
 
   useEffect(() => {
     setIsClient(true)
@@ -58,6 +90,9 @@ export default function DoctorAppointmentsPage() {
         setScheduledAppointments(filtered.filter((a: Appointment) => a.status === 'scheduled' || a.status === 'arrived'))
         setInProgressAppointments(filtered.filter((a: Appointment) => a.status === 'in-progress'))
         setCompletedAppointments(filtered.filter((a: Appointment) => a.status === 'completed'))
+        setScheduledPage(1)
+        setInProgressPage(1)
+        setCompletedPage(1)
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load appointments'
@@ -79,6 +114,55 @@ export default function DoctorAppointmentsPage() {
       }
     } catch (err) {
       toast.error('Error updating appointment')
+    }
+  }
+
+  const openCompleteConsultation = (apt: Appointment) => {
+    setCompletingAppointment(apt)
+    setConsultationSummary(apt.doctorSummary || '')
+    setConsultationFee('200')
+    setOpdConsultation({
+      complaints: '',
+      history: '',
+      diagnosis: '',
+      investigation: '',
+      medicines: '',
+      advice: '',
+      nextVisit: '',
+    })
+    setMedicines([{ medication: '', dosage: '', frequency: '', duration: '', quantity: '1', rate: '0', instructions: '' }])
+    setShowCompleteModal(true)
+  }
+
+  const submitCompleteConsultation = async () => {
+    if (!completingAppointment) return
+
+    if (!consultationSummary.trim()) {
+      toast.error('Please write consultation summary before completion')
+      return
+    }
+
+    const filteredMeds = medicines.filter((m) => m.medication && m.dosage && m.frequency)
+
+    try {
+      const response = await doctorApi.updateAppointment(completingAppointment._id, {
+        status: 'completed',
+        doctorSummary: consultationSummary.trim(),
+        consultationFee: Number(consultationFee) > 0 ? Number(consultationFee) : 200,
+        prescribedMedicines: filteredMeds,
+        opdConsultation,
+      })
+
+      if (response.success) {
+        toast.success('Consultation completed. Summary saved and consultation invoice generated.')
+        setShowCompleteModal(false)
+        setCompletingAppointment(null)
+        loadAppointments()
+      } else {
+        toast.error(response.message || 'Failed to complete consultation')
+      }
+    } catch (error) {
+      toast.error('Failed to complete consultation')
     }
   }
 
@@ -133,10 +217,9 @@ export default function DoctorAppointmentsPage() {
           )}
           {apt.status === 'in-progress' && (
             <>
-              <Button size="sm" onClick={() => handleUpdateStatus(apt._id, 'completed')}>
-                Complete
+              <Button size="sm" onClick={() => openCompleteConsultation(apt)}>
+                Complete Consultation
               </Button>
-              <Button size="sm" variant="outline">Add Prescription</Button>
             </>
           )}
           {(apt.status === 'scheduled' || apt.status === 'arrived') && (
@@ -144,7 +227,13 @@ export default function DoctorAppointmentsPage() {
               Cancel
             </Button>
           )}
-          <Button size="sm" variant="outline">View Details</Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => toast.info(`Patient: ${apt.patientName} | Reason: ${apt.reason}${apt.doctorSummary ? ` | Summary: ${apt.doctorSummary}` : ''}`)}
+          >
+            View Details
+          </Button>
         </div>
       )}
     </div>
@@ -155,6 +244,13 @@ export default function DoctorAppointmentsPage() {
   }
 
   const totalScheduled = scheduledAppointments.length + inProgressAppointments.length
+  const scheduledTotalPages = Math.max(1, Math.ceil(scheduledAppointments.length / PAGE_SIZE))
+  const inProgressTotalPages = Math.max(1, Math.ceil(inProgressAppointments.length / PAGE_SIZE))
+  const completedTotalPages = Math.max(1, Math.ceil(completedAppointments.length / PAGE_SIZE))
+
+  const paginatedScheduledAppointments = scheduledAppointments.slice((scheduledPage - 1) * PAGE_SIZE, scheduledPage * PAGE_SIZE)
+  const paginatedInProgressAppointments = inProgressAppointments.slice((inProgressPage - 1) * PAGE_SIZE, inProgressPage * PAGE_SIZE)
+  const paginatedCompletedAppointments = completedAppointments.slice((completedPage - 1) * PAGE_SIZE, completedPage * PAGE_SIZE)
 
   return (
     <div className="space-y-8">
@@ -217,13 +313,34 @@ export default function DoctorAppointmentsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {scheduledAppointments.length > 0 ? (
-                  scheduledAppointments.map((apt) => (
+                  paginatedScheduledAppointments.map((apt) => (
                     <AppointmentCard key={apt._id} apt={apt} />
                   ))
                 ) : (
                   <div className="text-center py-8">
                     <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                     <p className="text-muted-foreground">No scheduled appointments for this date</p>
+                  </div>
+                )}
+                {scheduledAppointments.length > PAGE_SIZE && (
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setScheduledPage((prev) => Math.max(1, prev - 1))}
+                      disabled={scheduledPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground">Page {scheduledPage} of {scheduledTotalPages}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setScheduledPage((prev) => Math.min(scheduledTotalPages, prev + 1))}
+                      disabled={scheduledPage === scheduledTotalPages}
+                    >
+                      Next
+                    </Button>
                   </div>
                 )}
               </CardContent>
@@ -238,13 +355,34 @@ export default function DoctorAppointmentsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {inProgressAppointments.length > 0 ? (
-                  inProgressAppointments.map((apt) => (
+                  paginatedInProgressAppointments.map((apt) => (
                     <AppointmentCard key={apt._id} apt={apt} />
                   ))
                 ) : (
                   <div className="text-center py-8">
                     <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                     <p className="text-muted-foreground">No active consultations</p>
+                  </div>
+                )}
+                {inProgressAppointments.length > PAGE_SIZE && (
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setInProgressPage((prev) => Math.max(1, prev - 1))}
+                      disabled={inProgressPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground">Page {inProgressPage} of {inProgressTotalPages}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setInProgressPage((prev) => Math.min(inProgressTotalPages, prev + 1))}
+                      disabled={inProgressPage === inProgressTotalPages}
+                    >
+                      Next
+                    </Button>
                   </div>
                 )}
               </CardContent>
@@ -259,7 +397,7 @@ export default function DoctorAppointmentsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {completedAppointments.length > 0 ? (
-                  completedAppointments.map((apt) => (
+                  paginatedCompletedAppointments.map((apt) => (
                     <AppointmentCard key={apt._id} apt={apt} showActions={false} />
                   ))
                 ) : (
@@ -268,10 +406,237 @@ export default function DoctorAppointmentsPage() {
                     <p className="text-muted-foreground">No completed appointments</p>
                   </div>
                 )}
+                {completedAppointments.length > PAGE_SIZE && (
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCompletedPage((prev) => Math.max(1, prev - 1))}
+                      disabled={completedPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground">Page {completedPage} of {completedTotalPages}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCompletedPage((prev) => Math.min(completedTotalPages, prev + 1))}
+                      disabled={completedPage === completedTotalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
+      )}
+
+      {showCompleteModal && completingAppointment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCompleteModal(false)}>
+          <div className="bg-background rounded-lg max-w-3xl w-full max-h-[85vh] overflow-y-auto m-4" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold">Complete Consultation</h2>
+                <Button variant="ghost" size="sm" onClick={() => setShowCompleteModal(false)}>✕</Button>
+              </div>
+
+              <div className="p-3 bg-muted/40 rounded-lg">
+                <p className="font-semibold">{completingAppointment.patientName}</p>
+                <p className="text-sm text-muted-foreground">{completingAppointment.patientId} • {completingAppointment.reason}</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Doctor Summary (Required)</label>
+                <textarea
+                  value={consultationSummary}
+                  onChange={(e) => setConsultationSummary(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md bg-background min-h-24"
+                  placeholder="Write diagnosis summary, findings, advice and follow-up instructions..."
+                />
+              </div>
+
+              <div className="space-y-3 border rounded-lg p-4">
+                <h3 className="font-semibold">Structured OPD Consultation</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Complaints</label>
+                    <textarea
+                      value={opdConsultation.complaints}
+                      onChange={(e) => setOpdConsultation({ ...opdConsultation, complaints: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md bg-background"
+                      rows={2}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">History</label>
+                    <textarea
+                      value={opdConsultation.history}
+                      onChange={(e) => setOpdConsultation({ ...opdConsultation, history: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md bg-background"
+                      rows={2}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Diagnosis</label>
+                    <textarea
+                      value={opdConsultation.diagnosis}
+                      onChange={(e) => setOpdConsultation({ ...opdConsultation, diagnosis: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md bg-background"
+                      rows={2}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Investigations (comma separated)</label>
+                    <textarea
+                      value={opdConsultation.investigation}
+                      onChange={(e) => setOpdConsultation({ ...opdConsultation, investigation: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md bg-background"
+                      rows={2}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Medicines Advice</label>
+                    <textarea
+                      value={opdConsultation.medicines}
+                      onChange={(e) => setOpdConsultation({ ...opdConsultation, medicines: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md bg-background"
+                      rows={2}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Advice</label>
+                    <textarea
+                      value={opdConsultation.advice}
+                      onChange={(e) => setOpdConsultation({ ...opdConsultation, advice: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md bg-background"
+                      rows={2}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Next Visit</label>
+                    <input
+                      type="date"
+                      value={opdConsultation.nextVisit}
+                      onChange={(e) => setOpdConsultation({ ...opdConsultation, nextVisit: e.target.value })}
+                      className="w-full px-3 py-2 border rounded-md bg-background"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Consultation Fee</label>
+                <input
+                  type="number"
+                  value={consultationFee}
+                  onChange={(e) => setConsultationFee(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md bg-background"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">Prescribed Medicines (optional)</h3>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setMedicines([...medicines, { medication: '', dosage: '', frequency: '', duration: '', quantity: '1', rate: '0', instructions: '' }])}
+                  >
+                    Add Medicine
+                  </Button>
+                </div>
+                {medicines.map((med, index) => (
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-2 border rounded-lg p-3">
+                    <input
+                      type="text"
+                      placeholder="Medicine"
+                      value={med.medication}
+                      onChange={(e) => {
+                        const next = [...medicines]
+                        next[index].medication = e.target.value
+                        setMedicines(next)
+                      }}
+                      className="px-3 py-2 border rounded-md bg-background"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Dosage"
+                      value={med.dosage}
+                      onChange={(e) => {
+                        const next = [...medicines]
+                        next[index].dosage = e.target.value
+                        setMedicines(next)
+                      }}
+                      className="px-3 py-2 border rounded-md bg-background"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Frequency"
+                      value={med.frequency}
+                      onChange={(e) => {
+                        const next = [...medicines]
+                        next[index].frequency = e.target.value
+                        setMedicines(next)
+                      }}
+                      className="px-3 py-2 border rounded-md bg-background"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Duration"
+                      value={med.duration}
+                      onChange={(e) => {
+                        const next = [...medicines]
+                        next[index].duration = e.target.value
+                        setMedicines(next)
+                      }}
+                      className="px-3 py-2 border rounded-md bg-background"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Qty"
+                      value={med.quantity}
+                      onChange={(e) => {
+                        const next = [...medicines]
+                        next[index].quantity = e.target.value
+                        setMedicines(next)
+                      }}
+                      className="px-3 py-2 border rounded-md bg-background"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Rate"
+                      value={med.rate}
+                      onChange={(e) => {
+                        const next = [...medicines]
+                        next[index].rate = e.target.value
+                        setMedicines(next)
+                      }}
+                      className="px-3 py-2 border rounded-md bg-background"
+                    />
+                    <textarea
+                      placeholder="Instructions"
+                      value={med.instructions}
+                      onChange={(e) => {
+                        const next = [...medicines]
+                        next[index].instructions = e.target.value
+                        setMedicines(next)
+                      }}
+                      className="md:col-span-3 px-3 py-2 border rounded-md bg-background"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button className="flex-1" onClick={submitCompleteConsultation}>Finalize Consultation</Button>
+                <Button variant="outline" onClick={() => setShowCompleteModal(false)}>Cancel</Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

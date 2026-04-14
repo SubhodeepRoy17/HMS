@@ -34,6 +34,9 @@ interface RecentActivity {
 }
 
 export default function ReceptionistDashboard() {
+  const TODAY_PAGE_SIZE = 5
+  const ACTIVITY_PAGE_SIZE = 3
+
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [stats, setStats] = useState<DashboardStats>({
@@ -47,6 +50,8 @@ export default function ReceptionistDashboard() {
   })
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([])
   const [todayAppointments, setTodayAppointments] = useState<any[]>([])
+  const [todayPage, setTodayPage] = useState(1)
+  const [activityPage, setActivityPage] = useState(1)
 
   useEffect(() => {
     setIsClient(true)
@@ -64,6 +69,8 @@ export default function ReceptionistDashboard() {
       if (appointmentsRes.success && appointmentsRes.data) {
         const appointments = appointmentsRes.data
         setTodayAppointments(appointments)
+        setTodayPage(1)
+        setActivityPage(1)
         
         // Calculate stats
         const checkedIn = appointments.filter((a: any) => a.status === 'arrived').length
@@ -79,32 +86,17 @@ export default function ReceptionistDashboard() {
           occupancyRate: Math.round((checkedIn + completed) / (appointments.length || 1) * 100),
           totalPatientsToday: appointments.length,
         })
+
+        const activityData = appointments.slice(0, 3).map((appointment: any, index: number) => ({
+          id: appointment._id || `${index}`,
+          type: appointment.status === 'arrived' ? 'checkin' : appointment.status === 'completed' ? 'discharge' : 'appointment',
+          description: `${appointment.reason || 'Visit'} with ${appointment.doctorName || 'doctor'}`,
+           time: appointment.timeSlot || new Date(appointment.appointmentDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          patientName: appointment.patientName,
+        }))
+
+        setRecentActivities(activityData)
       }
-      
-      // Load recent activities (would come from activity API)
-      setRecentActivities([
-        {
-          id: '1',
-          type: 'checkin',
-          description: 'Checked in for Cardiology consultation',
-          time: '10:30 AM',
-          patientName: 'John Doe',
-        },
-        {
-          id: '2',
-          type: 'registration',
-          description: 'New OPD registration completed',
-          time: '10:15 AM',
-          patientName: 'Sarah Wilson',
-        },
-        {
-          id: '3',
-          type: 'appointment',
-          description: 'Scheduled follow-up appointment',
-          time: '09:45 AM',
-          patientName: 'Robert Brown',
-        },
-      ])
       
     } catch (error) {
       console.error('Error loading dashboard:', error)
@@ -160,6 +152,18 @@ export default function ReceptionistDashboard() {
       </div>
     )
   }
+
+  const todayTotalPages = Math.max(1, Math.ceil(todayAppointments.length / TODAY_PAGE_SIZE))
+  const paginatedTodayAppointments = todayAppointments.slice(
+    (todayPage - 1) * TODAY_PAGE_SIZE,
+    todayPage * TODAY_PAGE_SIZE
+  )
+
+  const activityTotalPages = Math.max(1, Math.ceil(recentActivities.length / ACTIVITY_PAGE_SIZE))
+  const paginatedActivities = recentActivities.slice(
+    (activityPage - 1) * ACTIVITY_PAGE_SIZE,
+    activityPage * ACTIVITY_PAGE_SIZE
+  )
 
   return (
     <div className="space-y-8">
@@ -262,7 +266,7 @@ export default function ReceptionistDashboard() {
             <CardContent>
               <div className="space-y-3">
                 {todayAppointments.length > 0 ? (
-                  todayAppointments.slice(0, 5).map((apt) => (
+                  paginatedTodayAppointments.map((apt) => (
                     <div key={apt._id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -293,12 +297,28 @@ export default function ReceptionistDashboard() {
                     <p className="text-muted-foreground">No appointments scheduled for today</p>
                   </div>
                 )}
-                {todayAppointments.length > 5 && (
-                  <Link href="/receptionist/appointments">
-                    <Button variant="outline" className="w-full mt-2">
-                      View All ({todayAppointments.length}) Appointments
+                {todayAppointments.length > TODAY_PAGE_SIZE && (
+                  <div className="flex items-center justify-between mt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTodayPage((prev) => Math.max(1, prev - 1))}
+                      disabled={todayPage === 1}
+                    >
+                      Previous
                     </Button>
-                  </Link>
+                    <span className="text-sm text-muted-foreground">
+                      Page {todayPage} of {todayTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTodayPage((prev) => Math.min(todayTotalPages, prev + 1))}
+                      disabled={todayPage === todayTotalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 )}
               </div>
             </CardContent>
@@ -314,7 +334,7 @@ export default function ReceptionistDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentActivities.map((activity) => (
+                {paginatedActivities.map((activity) => (
                   <div key={activity.id} className="flex items-start gap-3 pb-3 border-b last:border-0">
                     <div className="p-2 rounded-lg bg-muted">
                       {getActivityIcon(activity.type)}
@@ -326,6 +346,29 @@ export default function ReceptionistDashboard() {
                     </div>
                   </div>
                 ))}
+                {recentActivities.length > ACTIVITY_PAGE_SIZE && (
+                  <div className="flex items-center justify-between pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActivityPage((prev) => Math.max(1, prev - 1))}
+                      disabled={activityPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      Page {activityPage} of {activityTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActivityPage((prev) => Math.min(activityTotalPages, prev + 1))}
+                      disabled={activityPage === activityTotalPages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

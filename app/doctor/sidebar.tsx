@@ -4,13 +4,13 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  ClipboardList,
   FileText,
   Menu,
   Stethoscope,
   X,
   Home,
   Calendar,
+  Pill,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -25,7 +25,7 @@ const doctorNavigation: NavigationItem[] = [
   { label: 'Dashboard', href: '/doctor/dashboard', icon: Home },
   { label: 'Appointments', href: '/doctor/appointments', icon: Calendar },
   { label: 'Medical Records', href: '/doctor/medical-records', icon: FileText },
-  { label: 'Prescriptions', href: '/doctor/prescriptions', icon: ClipboardList },
+  { label: 'Prescriptions', href: '/doctor/prescriptions', icon: Pill },
 ]
 
 export function DoctorSidebar() {

@@ -24,7 +24,7 @@ export interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<any>;
+  login: (email: string, password: string, expectedRole?: User['role']) => Promise<any>;
   register: (data: any) => Promise<any>;
   logout: () => Promise<void>;
   verifySession: () => Promise<void>;
@@ -70,11 +70,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     verifySession();
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, expectedRole?: User['role']) => {
     try {
       const response = await authApi.login({ email, password });
 
       if (response.success && response.user && response.token) {
+        if (expectedRole && response.user.role !== expectedRole) {
+          const roleLabel = response.user.role.charAt(0).toUpperCase() + response.user.role.slice(1);
+          const expectedLabel = expectedRole.charAt(0).toUpperCase() + expectedRole.slice(1);
+          throw new Error(`This account is registered as ${roleLabel}. Please select ${expectedLabel} role to continue.`);
+        }
+
         localStorage.setItem('auth_token', response.token);
         setUser(response.user as User);
         setIsAuthenticated(true);

@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Microscope, FileText, AlertCircle, CheckCircle2, Lock } from 'lucide-react'
+import { Microscope, FileText, AlertCircle, CheckCircle2, Lock, Loader2, Search, Plus, Eye } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { investigationsApi, receptionApi } from '@/lib/api-client'
+import { toast } from 'sonner'
 
 interface TestParameter {
   name: string
@@ -24,6 +26,7 @@ interface TestDefinition {
 
 interface Investigation {
   id: string
+  investigationId: string
   patientId: string
   patientName: string
   age: number
@@ -35,125 +38,181 @@ interface Investigation {
   previousResults?: Record<string, string>
   verifiedBy?: string
   enteredBy?: string
+  department?: string
+}
+
+interface PatientSearchResult {
+  _id: string
+  patientId: string
+  demographics: {
+    fullName: string
+    age: number
+    sex: string
+    phone: string
+  }
 }
 
 export default function InvestigationsPage() {
   const [isClient, setIsClient] = useState(false)
-  const [selectedTest, setSelectedTest] = useState<string>('')
-  const [investigations, setInvestigations] = useState<Investigation[]>([
-    {
-      id: 'INV001',
-      patientId: 'PID-2024-001',
-      patientName: 'Alice Brown',
-      age: 35,
-      gender: 'Female',
-      testName: 'Complete Blood Count',
-      date: '2024-03-25',
-      status: 'completed',
-      results: {
-        'Hemoglobin': { value: '13.5', abnormal: false },
-        'WBC': { value: '7500', abnormal: false },
-        'Platelets': { value: '250000', abnormal: false }
-      },
-      previousResults: { 'Hemoglobin': '13.2', 'WBC': '7200' },
-      verifiedBy: 'Dr. Lab Manager'
-    },
-    {
-      id: 'INV002',
-      patientId: 'PID-2024-002',
-      patientName: 'David Wilson',
-      age: 48,
-      gender: 'Male',
-      testName: 'Liver Function Test',
-      date: '2024-03-24',
-      status: 'entered',
-      results: {
-        'Total Bilirubin': { value: '0.9', abnormal: false },
-        'SGOT': { value: '45', abnormal: true },
-        'SGPT': { value: '52', abnormal: true }
-      },
-      enteredBy: 'Lab Technician 1'
-    },
-  ])
-
+  const [isLoading, setIsLoading] = useState(true)
+  const [selectedTest, setSelectedTest] = useState('')
+  const [selectedPatient, setSelectedPatient] = useState<PatientSearchResult | null>(null)
+  const [patientQuery, setPatientQuery] = useState('')
+  const [patientSearchResults, setPatientSearchResults] = useState<PatientSearchResult[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [investigations, setInvestigations] = useState<Investigation[]>([])
+  const [selectedInvestigationForEntry, setSelectedInvestigationForEntry] = useState<string | null>(null)
   const [resultEntryForm, setResultEntryForm] = useState({
-    investigationId: '',
-    parameterValues: {} as Record<string, string>,
     enteredBy: '',
-    verificationPassword: ''
+    parameterValues: {} as Record<string, string>,
   })
+  const [verificationPasswords, setVerificationPasswords] = useState<Record<string, string>>({})
+  const [orderNotes, setOrderNotes] = useState('')
 
   const testDefinitions: TestDefinition[] = [
     {
-      id: 'TEST001',
+      id: 'CBC',
       name: 'Complete Blood Count',
       department: 'Pathology',
       parameters: [
-        { name: 'Hemoglobin', unit: 'g/dL', refRange: 'M: 13.5-17.5, F: 12.0-15.5', resultOptions: ['Normal', 'Low', 'High', 'Critically Low', 'Critically High'] },
-        { name: 'WBC', unit: 'cells/μL', refRange: '4500-11000', resultOptions: ['Normal', 'Low', 'High', 'Severely Low', 'Severely High'] },
-        { name: 'RBC', unit: 'million/μL', refRange: 'M: 4.5-5.9, F: 4.1-5.1', resultOptions: ['Normal', 'Low', 'High', 'Critical Low', 'Critical High'] },
-        { name: 'Platelets', unit: 'thousand/μL', refRange: '150-400', resultOptions: ['Normal', 'Low Thrombocytes', 'High Thrombocytes', 'Severe Deficiency', 'Severe Elevation'] }
-      ]
+        { name: 'Hemoglobin', unit: 'g/dL', refRange: 'M: 13.5-17.5, F: 12.0-15.5' },
+        { name: 'WBC', unit: 'cells/μL', refRange: '4500-11000' },
+        { name: 'RBC', unit: 'million/μL', refRange: 'M: 4.5-5.9, F: 4.1-5.1' },
+        { name: 'Platelets', unit: 'thousand/μL', refRange: '150-400' },
+      ],
     },
     {
-      id: 'TEST002',
+      id: 'LFT',
       name: 'Liver Function Test',
       department: 'Pathology',
       parameters: [
-        { name: 'Total Bilirubin', unit: 'mg/dL', refRange: '0.1-1.2', resultOptions: ['Normal', 'Mildly Elevated', 'Moderately Elevated', 'Severely Elevated', 'Critical Level'] },
-        { name: 'SGOT', unit: 'U/L', refRange: '10-40', resultOptions: ['Normal', 'Slightly Elevated', 'Moderately Elevated', 'Significantly Elevated', 'Critical'] },
-        { name: 'SGPT', unit: 'U/L', refRange: '7-56', resultOptions: ['Normal', 'Slightly Elevated', 'Moderately Elevated', 'Significantly Elevated', 'Critical'] },
-        { name: 'Alkaline Phosphatase', unit: 'U/L', refRange: '30-120', formula: 'Calculated from liver enzymes' }
-      ]
+        { name: 'Total Bilirubin', unit: 'mg/dL', refRange: '0.1-1.2' },
+        { name: 'SGOT', unit: 'U/L', refRange: '10-40' },
+        { name: 'SGPT', unit: 'U/L', refRange: '7-56' },
+        { name: 'Alkaline Phosphatase', unit: 'U/L', refRange: '30-120' },
+      ],
     },
     {
-      id: 'TEST003',
+      id: 'KFT',
       name: 'Kidney Function Test',
       department: 'Pathology',
       parameters: [
-        { name: 'Creatinine', unit: 'mg/dL', refRange: 'M: 0.7-1.3, F: 0.6-1.2', resultOptions: ['Normal', 'Slightly Elevated', 'Moderately Elevated', 'Severely Elevated', 'Critical'] },
-        { name: 'BUN', unit: 'mg/dL', refRange: '7-20', resultOptions: ['Normal', 'Mildly Elevated', 'Moderately Elevated', 'Significantly Elevated', 'Critical Level'] },
-        { name: 'eGFR', unit: 'mL/min/1.73m²', refRange: '>60', formula: 'Calculated from Creatinine and Age' }
-      ]
+        { name: 'Creatinine', unit: 'mg/dL', refRange: 'M: 0.7-1.3, F: 0.6-1.2' },
+        { name: 'BUN', unit: 'mg/dL', refRange: '7-20' },
+        { name: 'eGFR', unit: 'mL/min/1.73m²', refRange: '>60' },
+      ],
     },
     {
-      id: 'TEST004',
+      id: 'ECG',
       name: 'ECG',
       department: 'Cardiology',
       parameters: [
-        { name: 'Rhythm', unit: 'N/A', refRange: 'Sinus Normal', resultOptions: ['Normal Sinus', 'Atrial Fibrillation', 'Arrhythmia', 'Bradycardia', 'Tachycardia'] },
-        { name: 'ST Segment', unit: 'N/A', refRange: 'Normal', resultOptions: ['Normal', 'Depression', 'Elevation', 'T Wave Inversion', 'Critical Changes'] },
-        { name: 'QT Interval', unit: 'ms', refRange: 'M: <450, F: <460', resultOptions: ['Normal', 'Prolonged', 'Shortened', 'Borderline', 'Critical'] }
-      ]
-    }
+        { name: 'Rhythm', unit: 'N/A', refRange: 'Sinus Normal' },
+        { name: 'ST Segment', unit: 'N/A', refRange: 'Normal' },
+        { name: 'QT Interval', unit: 'ms', refRange: 'M: <450, F: <460' },
+      ],
+    },
   ]
 
-  const departmentPasscodes = {
-    'Pathology': 'LAB2024',
-    'Cardiology': 'CARDIO2024',
-    'Radiology': 'RAD2024'
-  }
+  const currentTest = useMemo(
+    () => testDefinitions.find((test) => test.name === selectedTest) || null,
+    [selectedTest]
+  )
 
   useEffect(() => {
     setIsClient(true)
+    loadInvestigations()
   }, [])
+
+  const loadInvestigations = async () => {
+    try {
+      setIsLoading(true)
+      const response = await investigationsApi.getInvestigations()
+      if (response.success && response.data) {
+        const mapped = (response.data as any[]).map((item) => ({
+          id: item._id,
+          investigationId: item.investigationId,
+          patientId: item.patientId,
+          patientName: item.patientName,
+          age: item.patientAge || 0,
+          gender: item.patientGender || 'Other',
+          testName: item.testName,
+          date: item.requisitionDate ? new Date(item.requisitionDate).toISOString().split('T')[0] : '',
+          status: item.status,
+          results: (item.parameters || []).reduce((acc: Record<string, { value: string; abnormal: boolean }>, param: any) => {
+            acc[param.name] = { value: param.value || '', abnormal: Boolean(param.isAbnormal) }
+            return acc
+          }, {}),
+          verifiedBy: item.verifiedBy,
+          enteredBy: item.enteredBy,
+          department: item.department,
+        }))
+        setInvestigations(mapped)
+      } else {
+        setInvestigations([])
+      }
+    } catch (error) {
+      console.error('Load investigations error:', error)
+      toast.error('Failed to load investigations')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const searchPatients = async () => {
+    if (!patientQuery.trim()) return
+
+    try {
+      setIsSearching(true)
+      const response = await receptionApi.searchPatient(patientQuery)
+      const patientInfo = response.success ? response.data?.patientInfo : null
+      if (patientInfo) {
+        setPatientSearchResults([
+          {
+            _id: patientInfo._id,
+            patientId: patientInfo.patientId,
+            demographics: patientInfo.demographics,
+          },
+        ])
+      } else {
+        setPatientSearchResults([])
+        toast.info('No patient found')
+      }
+    } catch (error) {
+      console.error('Search patients error:', error)
+      toast.error('Failed to search patients')
+    } finally {
+      setIsSearching(false)
+    }
+  }
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
       pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-      'entered': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-      'verified': 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-      'completed': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+      entered: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+      verified: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+      completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
     }
     return <Badge className={variants[status] || 'bg-gray-100 text-gray-800'}>{status}</Badge>
   }
 
   const isAbnormal = (value: string, refRange: string): boolean => {
     try {
-      const numValue = parseFloat(value)
+      const numericValue = parseFloat(value)
+      if (Number.isNaN(numericValue)) return false
       if (refRange.includes('-')) {
-        const [min, max] = refRange.split('-').map(v => parseFloat(v.trim()))
-        return isNaN(numValue) ? false : numValue < min || numValue > max
+        const [min, max] = refRange.split('-').map((segment) => parseFloat(segment.replace(/[^0-9.]/g, '')))
+        if (!Number.isNaN(min) && !Number.isNaN(max)) {
+          return numericValue < min || numericValue > max
+        }
+      }
+      if (refRange.includes('>')) {
+        const min = parseFloat(refRange.replace(/[^0-9.]/g, ''))
+        return !Number.isNaN(min) && numericValue < min
+      }
+      if (refRange.includes('<')) {
+        const max = parseFloat(refRange.replace(/[^0-9.]/g, ''))
+        return !Number.isNaN(max) && numericValue > max
       }
       return false
     } catch {
@@ -161,74 +220,142 @@ export default function InvestigationsPage() {
     }
   }
 
-  const handleAddResultEntry = (investigationId: string) => {
-    setResultEntryForm({ ...resultEntryForm, investigationId })
-  }
-
-  const handleSaveResults = () => {
-    if (!resultEntryForm.investigationId || !resultEntryForm.enteredBy) {
-      alert('Please fill in required fields')
+  const handleSaveResults = async (investigation: Investigation) => {
+    if (!resultEntryForm.enteredBy) {
+      toast.error('Please enter the technician name')
       return
     }
 
-    const currentInv = investigations.find(inv => inv.id === resultEntryForm.investigationId)
-    const testDef = testDefinitions.find(t => t.name === currentInv?.testName)
-    
-    const transformedResults: Record<string, { value: string; abnormal: boolean }> = {}
-    Object.entries(resultEntryForm.parameterValues).forEach(([key, value]) => {
-      const param = testDef?.parameters.find(p => p.name === key)
-      transformedResults[key] = {
-        value: value,
-        abnormal: param ? isAbnormal(value, param.refRange) : false
-      }
-    })
+    const transformedParameters = currentTest?.parameters.map((param) => ({
+      name: param.name,
+      value: resultEntryForm.parameterValues[param.name] || '',
+      unit: param.unit,
+      referenceRange: param.refRange,
+      isAbnormal: isAbnormal(resultEntryForm.parameterValues[param.name] || '', param.refRange),
+    })) || []
 
-    const updatedInvestigations = investigations.map(inv => {
-      if (inv.id === resultEntryForm.investigationId) {
-        return {
-          ...inv,
-          status: 'entered' as const,
-          results: transformedResults,
-          enteredBy: resultEntryForm.enteredBy
-        }
+    const parametersPayload = transformedParameters.reduce((acc: Record<string, string>, param) => {
+      acc[param.name] = param.value
+      return acc
+    }, {})
+
+    try {
+      const response = await investigationsApi.enterResults(investigation.investigationId, parametersPayload, resultEntryForm.enteredBy)
+      if (response.success) {
+        toast.success('Results saved successfully')
+        setSelectedInvestigationForEntry(null)
+        setResultEntryForm({ enteredBy: '', parameterValues: {} })
+        loadInvestigations()
+      } else {
+        toast.error(response.message || 'Failed to save results')
       }
-      return inv
-    })
-    setInvestigations(updatedInvestigations)
-    setResultEntryForm({ investigationId: '', parameterValues: {}, enteredBy: '', verificationPassword: '' })
+    } catch (error) {
+      console.error('Save results error:', error)
+      toast.error('Failed to save results')
+    }
   }
 
-  const handleVerifyResults = (investigationId: string, passcode: string) => {
-    if (passcode !== 'LAB2024' && passcode !== 'CARDIO2024' && passcode !== 'RAD2024') {
-      alert('Invalid verification passcode')
+  const handleImportFromEquipment = async (investigation: Investigation) => {
+    const values: Record<string, string> = {}
+    const localTest = testDefinitions.find((test) => test.name === investigation.testName)
+
+    for (const param of localTest?.parameters || []) {
+      const rangeMatch = param.refRange.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/)
+      if (rangeMatch) {
+        const min = Number(rangeMatch[1])
+        const max = Number(rangeMatch[2])
+        const mid = (min + max) / 2
+        values[param.name] = String(Number(mid.toFixed(2)))
+      } else if (param.refRange.includes('>')) {
+        const min = Number(param.refRange.replace(/[^0-9.]/g, ''))
+        values[param.name] = String(Number((min + 1).toFixed(2)))
+      } else {
+        values[param.name] = '1'
+      }
+    }
+
+    try {
+      const response = await investigationsApi.importEquipmentResults(investigation.investigationId, values, 'Simulated Device Feed')
+      if (response.success) {
+        toast.success('Equipment results imported')
+        loadInvestigations()
+      } else {
+        toast.error(response.message || 'Failed to import equipment results')
+      }
+    } catch {
+      toast.error('Failed to import equipment results')
+    }
+  }
+
+  const handleVerifyResults = async (investigation: Investigation) => {
+    const passcode = verificationPasswords[investigation.investigationId] || ''
+    if (!passcode) {
+      toast.error('Please enter verification passcode')
       return
     }
 
-    const updatedInvestigations = investigations.map(inv => {
-      if (inv.id === investigationId) {
-        return {
-          ...inv,
-          status: 'completed' as const,
-          verifiedBy: 'Authorized Reviewer'
-        }
+    try {
+      const response = await investigationsApi.verifyResults(investigation.investigationId, passcode)
+      if (response.success) {
+        toast.success('Investigation verified successfully')
+        setVerificationPasswords({ ...verificationPasswords, [investigation.investigationId]: '' })
+        loadInvestigations()
+      } else {
+        toast.error(response.message || 'Failed to verify results')
       }
-      return inv
-    })
-    setInvestigations(updatedInvestigations)
+    } catch (error) {
+      console.error('Verify results error:', error)
+      toast.error('Failed to verify results')
+    }
   }
 
-  if (!isClient) {
+  const handleOrderTest = async () => {
+    if (!selectedPatient || !currentTest) {
+      toast.error('Please select a patient and test')
+      return
+    }
+
+    try {
+      const response = await investigationsApi.orderInvestigation({
+        patientId: selectedPatient.patientId,
+        patientName: selectedPatient.demographics.fullName,
+        patientAge: selectedPatient.demographics.age,
+        patientGender: selectedPatient.demographics.sex,
+        testName: currentTest.name,
+        testCategory: currentTest.department,
+        department: currentTest.department,
+        clinicalNotes: orderNotes,
+      })
+
+      if (response.success) {
+        toast.success('Test requisition created')
+        setSelectedTest('')
+        setSelectedPatient(null)
+        setPatientQuery('')
+        setPatientSearchResults([])
+        setOrderNotes('')
+        loadInvestigations()
+      } else {
+        toast.error(response.message || 'Failed to create requisition')
+      }
+    } catch (error) {
+      console.error('Order test error:', error)
+      toast.error('Failed to create requisition')
+    }
+  }
+
+  if (!isClient || isLoading) {
     return <div className="h-96 bg-muted animate-pulse rounded-lg" />
   }
 
-  const pendingTests = investigations.filter(inv => inv.status === 'pending' || inv.status === 'entered').length
-  const completedTests = investigations.filter(inv => inv.status === 'completed').length
+  const pendingTests = investigations.filter((item) => item.status === 'pending' || item.status === 'entered').length
+  const completedTests = investigations.filter((item) => item.status === 'completed').length
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-4xl font-bold tracking-tight">Investigations & Lab Testing</h1>
-        <p className="text-muted-foreground mt-2 text-base">Advanced lab result entry, validation, and automated reporting with role-based access</p>
+        <p className="text-muted-foreground mt-2 text-base">Real lab result entry, validation, and report generation</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -268,7 +395,7 @@ export default function InvestigationsPage() {
               <div className="flex-1">
                 <CardTitle className="text-sm font-semibold text-muted-foreground mb-2">Completed</CardTitle>
                 <p className="text-3xl font-bold">{completedTests}</p>
-                <p className="text-xs text-muted-foreground mt-2">Reports ready for print</p>
+                <p className="text-xs text-muted-foreground mt-2">Reports ready</p>
               </div>
               <div className="p-3 rounded-lg bg-primary/10">
                 <CheckCircle2 className="h-6 w-6 text-primary" />
@@ -286,244 +413,240 @@ export default function InvestigationsPage() {
           <TabsTrigger value="order">Order Test</TabsTrigger>
         </TabsList>
 
-        {/* All Tests Tab */}
         <TabsContent value="all" className="mt-4">
           <Card>
             <CardHeader>
               <CardTitle>All Investigations</CardTitle>
-              <CardDescription>Complete test history with results and status</CardDescription>
+              <CardDescription>Live test history with results and status</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {investigations.map((inv) => (
+              {investigations.length > 0 ? investigations.map((inv) => (
                 <div key={inv.id} className="border rounded-lg p-4 space-y-3 hover:bg-muted/30 transition-colors">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <h3 className="font-semibold">{inv.patientName} ({inv.testName})</h3>
                       <p className="text-sm text-muted-foreground">{inv.patientId} • Age: {inv.age} • {inv.gender} • {inv.date}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {getStatusBadge(inv.status)}
-                    </div>
+                    <div className="flex items-center gap-2">{getStatusBadge(inv.status)}</div>
                   </div>
 
-                  {inv.results && Object.keys(inv.results).length > 0 && (
+                  {Object.keys(inv.results).length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                       {Object.entries(inv.results).map(([param, data]) => (
                         <div key={param} className={`p-2 rounded ${data.abnormal ? 'bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800' : 'bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800'}`}>
                           <p className="font-medium">{param}</p>
-                          <p className={data.abnormal ? 'text-red-700 dark:text-red-400 font-semibold' : 'text-emerald-700 dark:text-emerald-400'}>
-                            {data.value} {data.abnormal && '⚠️'}
-                          </p>
-                          {inv.previousResults?.[param] && (
-                            <p className="text-xs text-muted-foreground mt-1">Previous: {inv.previousResults[param]}</p>
-                          )}
+                          <p className={data.abnormal ? 'text-red-700 dark:text-red-400 font-semibold' : 'text-emerald-700 dark:text-emerald-400'}>{data.value || 'Pending'} {data.abnormal ? '⚠️' : ''}</p>
                         </div>
                       ))}
                     </div>
                   )}
 
-                  <div className="flex gap-2">
-                    {inv.status === 'entered' && <Button size="sm" variant="outline">Review</Button>}
-                    {inv.status === 'completed' && <Button size="sm" variant="outline"><FileText className="h-4 w-4 mr-1" />Print Report</Button>}
+                  <div className="flex gap-2 flex-wrap">
+                    {inv.status === 'pending' && (
+                      <Button size="sm" variant="outline" onClick={() => setSelectedInvestigationForEntry(inv.investigationId)}>
+                        <Plus className="h-4 w-4 mr-1" /> Enter Results
+                      </Button>
+                    )}
+                    {inv.status === 'entered' && <Badge variant="outline">Ready for verification</Badge>}
+                    {inv.status === 'completed' && <Button size="sm" variant="outline"><FileText className="h-4 w-4 mr-1" /> Print Report</Button>}
                     {inv.enteredBy && <p className="text-xs text-muted-foreground mt-1">Entered by: {inv.enteredBy}</p>}
                     {inv.verifiedBy && <p className="text-xs text-muted-foreground">Verified by: {inv.verifiedBy}</p>}
                   </div>
+                </div>
+              )) : <p className="text-muted-foreground text-center py-8">No investigations found</p>}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="pending" className="mt-4 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Result Entry Form</CardTitle>
+              <CardDescription>Enter test parameters and results</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {investigations.filter((inv) => inv.status === 'pending').map((inv) => (
+                <div key={inv.id} className="border rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold">{inv.patientName} - {inv.testName}</h3>
+                      <p className="text-sm text-muted-foreground">{inv.patientId} • {inv.date}</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => {
+                      setSelectedInvestigationForEntry(inv.investigationId)
+                      setSelectedTest(inv.testName)
+                    }}>Load</Button>
+                  </div>
+
+                  {selectedInvestigationForEntry === inv.investigationId && (
+                    <>
+                      {currentTest?.parameters.map((param) => (
+                        <div key={param.name} className="mb-3">
+                          <label className="text-sm font-medium">{param.name} ({param.unit})</label>
+                          <p className="text-xs text-muted-foreground mb-1">Ref: {param.refRange}</p>
+                          <input
+                            type="text"
+                            placeholder="Enter result"
+                            className="w-full px-3 py-2 mt-1 border rounded-md bg-background text-sm"
+                            value={resultEntryForm.parameterValues[param.name] || ''}
+                            onChange={(e) => setResultEntryForm({
+                              ...resultEntryForm,
+                              parameterValues: {
+                                ...resultEntryForm.parameterValues,
+                                [param.name]: e.target.value,
+                              },
+                            })}
+                          />
+                        </div>
+                      ))}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                        <input
+                          type="text"
+                          placeholder="Technician name"
+                          value={resultEntryForm.enteredBy}
+                          onChange={(e) => setResultEntryForm({ ...resultEntryForm, enteredBy: e.target.value })}
+                          className="px-3 py-2 border rounded-md bg-background text-sm"
+                        />
+                        <Button onClick={() => handleSaveResults(inv)} className="w-full">Save Results</Button>
+                      </div>
+
+                      <Button variant="outline" className="w-full" onClick={() => handleImportFromEquipment(inv)}>
+                        Import From Equipment
+                      </Button>
+                    </>
+                  )}
                 </div>
               ))}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Pending Results Tab */}
-        <TabsContent value="pending" className="mt-4 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Result Entry Form</CardTitle>
-              <CardDescription>Enter test parameters and results with automated abnormal detection</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {investigations
-                .filter(inv => inv.status === 'pending')
-                .map((inv) => (
-                  <div key={inv.id} className="border rounded-lg p-4 space-y-4">
-                    <div>
-                      <h3 className="font-semibold mb-2">{inv.patientName} - {inv.testName}</h3>
-                      
-                      {testDefinitions.find(t => t.name === inv.testName)?.parameters.map((param) => (
-                        <div key={param.name} className="mb-3">
-                          <label className="text-sm font-medium">{param.name} ({param.unit})</label>
-                          <p className="text-xs text-muted-foreground mb-1">Ref: {param.refRange}</p>
-                          {param.resultOptions ? (
-                            <select 
-                              className="w-full px-3 py-2 mt-1 border rounded-md bg-background text-sm"
-                              onChange={(e) => {
-                                const value = e.target.value
-                                setResultEntryForm({
-                                  ...resultEntryForm,
-                                  parameterValues: {
-                                    ...resultEntryForm.parameterValues,
-                                    [param.name]: value
-                                  }
-                                })
-                              }}
-                            >
-                              <option value="">Select Result</option>
-                              {param.resultOptions.map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input 
-                              type="number"
-                              placeholder="Enter numeric value"
-                              className="w-full px-3 py-2 mt-1 border rounded-md bg-background text-sm"
-                              onChange={(e) => {
-                                setResultEntryForm({
-                                  ...resultEntryForm,
-                                  parameterValues: {
-                                    ...resultEntryForm.parameterValues,
-                                    [param.name]: e.target.value
-                                  }
-                                })
-                              }}
-                            />
-                          )}
-                          {param.formula && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">📐 {param.formula}</p>}
-                        </div>
-                      ))}
-
-                      <div className="grid grid-cols-2 gap-3 mt-4">
-                        <input 
-                          type="text"
-                          placeholder="Your name (Technician)"
-                          value={resultEntryForm.enteredBy}
-                          onChange={(e) => setResultEntryForm({ ...resultEntryForm, enteredBy: e.target.value })}
-                          className="px-3 py-2 border rounded-md bg-background text-sm"
-                        />
-                        <Button 
-                          onClick={handleSaveResults}
-                          className="w-full"
-                        >
-                          Save Results - Ready for Verification
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              }
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Verification Queue Tab */}
         <TabsContent value="verify" className="mt-4 space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="h-5 w-5" />
-                2-Step Verification & Approval
-              </CardTitle>
-              <CardDescription>Review and verify results before generating final reports</CardDescription>
+              <CardTitle className="flex items-center gap-2"><Lock className="h-5 w-5" /> Verification & Approval</CardTitle>
+              <CardDescription>Review and verify results before generating final reports. Passcodes are managed in Admin Settings → Security.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {investigations
-                .filter(inv => inv.status === 'entered')
-                .map((inv) => (
-                  <div key={inv.id} className="border rounded-lg p-4 space-y-4 bg-blue-50/30 dark:bg-blue-950/10">
-                    <div>
-                      <h3 className="font-semibold">{inv.patientName} - {inv.testName}</h3>
-                      <p className="text-sm text-muted-foreground">Entered by: {inv.enteredBy} on {inv.date}</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      {Object.entries(inv.results).map(([param, data]) => (
-                        <div key={param} className={`p-3 rounded flex justify-between items-center ${data.abnormal ? 'bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700' : 'bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700'}`}>
-                          <span className="font-medium">{param}</span>
-                          <span>{data.value} {data.abnormal && <span className="text-red-700 dark:text-red-400 ml-2">⚠️ OUT OF RANGE</span>}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex gap-2">
-                      <input 
-                        type="password"
-                        placeholder="Enter verification passcode"
-                        id={`verify-${inv.id}`}
-                        className="flex-1 px-3 py-2 border rounded-md bg-background text-sm"
-                      />
-                      <Button 
-                        size="sm"
-                        onClick={() => {
-                          const passcode = (document.getElementById(`verify-${inv.id}`) as HTMLInputElement).value
-                          handleVerifyResults(inv.id, passcode)
-                        }}
-                      >
-                        Verify & Approve
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Role-based verification required. Department passcodes configured.</p>
+              {investigations.filter((inv) => inv.status === 'entered').map((inv) => (
+                <div key={inv.id} className="border rounded-lg p-4 space-y-4 bg-blue-50/30 dark:bg-blue-950/10">
+                  <div>
+                    <h3 className="font-semibold">{inv.patientName} - {inv.testName}</h3>
+                    <p className="text-sm text-muted-foreground">Entered by: {inv.enteredBy} on {inv.date}</p>
                   </div>
-                ))
-              }
-              {investigations.filter(inv => inv.status === 'entered').length === 0 && (
+
+                  <div className="space-y-2">
+                    {Object.entries(inv.results).map(([param, data]) => (
+                      <div key={param} className={`p-3 rounded flex justify-between items-center ${data.abnormal ? 'bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700' : 'bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700'}`}>
+                        <span className="font-medium">{param}</span>
+                        <span>{data.value} {data.abnormal && <span className="text-red-700 dark:text-red-400 ml-2">⚠️ OUT OF RANGE</span>}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="Enter verification passcode"
+                      value={verificationPasswords[inv.investigationId] || ''}
+                      onChange={(e) => setVerificationPasswords({ ...verificationPasswords, [inv.investigationId]: e.target.value })}
+                      className="flex-1 px-3 py-2 border rounded-md bg-background text-sm"
+                    />
+                    <Button size="sm" onClick={() => handleVerifyResults(inv)}>Verify & Approve</Button>
+                  </div>
+                </div>
+              ))}
+              {investigations.filter((inv) => inv.status === 'entered').length === 0 && (
                 <p className="text-muted-foreground text-center py-8">No tests awaiting verification</p>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Order Test Tab */}
         <TabsContent value="order" className="mt-4">
           <Card>
             <CardHeader>
               <CardTitle>Order New Test</CardTitle>
-              <CardDescription>Create new test requisition with test parameters</CardDescription>
+              <CardDescription>Create new test requisition for a patient</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input type="text" placeholder="Patient Name" className="px-3 py-2 border rounded-md bg-background" />
-                <input type="text" placeholder="Patient ID" className="px-3 py-2 border rounded-md bg-background" />
-                <input type="number" placeholder="Age" className="px-3 py-2 border rounded-md bg-background" />
-                <select className="px-3 py-2 border rounded-md bg-background">
-                  <option>Male</option>
-                  <option>Female</option>
-                  <option>Other</option>
-                </select>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Search Patient</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={patientQuery}
+                      onChange={(e) => setPatientQuery(e.target.value)}
+                      placeholder="Search by name, ID, or phone..."
+                      className="flex-1 px-3 py-2 border rounded-md bg-background"
+                    />
+                    <Button type="button" onClick={searchPatients} disabled={isSearching}>
+                      {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                {patientSearchResults.length > 0 && (
+                  <div className="space-y-2">
+                    {patientSearchResults.map((patient) => (
+                      <div key={patient._id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div>
+                          <p className="font-semibold">{patient.demographics.fullName}</p>
+                          <p className="text-sm text-muted-foreground">ID: {patient.patientId} • Phone: {patient.demographics.phone}</p>
+                        </div>
+                        <Button type="button" size="sm" onClick={() => setSelectedPatient(patient)}>Select</Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {selectedPatient && (
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="font-semibold">Selected: {selectedPatient.demographics.fullName}</p>
+                    <p className="text-sm text-muted-foreground">{selectedPatient.patientId}</p>
+                  </div>
+                )}
               </div>
 
               <div>
                 <label className="text-sm font-medium">Select Test Type *</label>
-                <select 
+                <select
                   value={selectedTest}
                   onChange={(e) => setSelectedTest(e.target.value)}
                   className="w-full px-3 py-2 mt-2 border rounded-md bg-background"
                 >
                   <option value="">Choose test</option>
-                  {testDefinitions.map(test => (
+                  {testDefinitions.map((test) => (
                     <option key={test.id} value={test.name}>{test.name} - {test.department}</option>
                   ))}
                 </select>
               </div>
 
-              {selectedTest && (
+              {currentTest && (
                 <div className="p-4 bg-muted rounded-lg">
                   <h4 className="font-semibold mb-3">Test Parameters:</h4>
                   <div className="space-y-2">
-                    {testDefinitions
-                      .find(t => t.name === selectedTest)
-                      ?.parameters.map(param => (
-                        <div key={param.name} className="text-sm">
-                          <p className="font-medium">{param.name}</p>
-                          <p className="text-muted-foreground text-xs">Unit: {param.unit} | Ref Range: {param.refRange}</p>
-                        </div>
-                      ))
-                    }
+                    {currentTest.parameters.map((param) => (
+                      <div key={param.name} className="text-sm">
+                        <p className="font-medium">{param.name}</p>
+                        <p className="text-muted-foreground text-xs">Unit: {param.unit} | Ref Range: {param.refRange}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
-              <textarea placeholder="Clinical Notes / Indications" className="w-full px-3 py-2 border rounded-md bg-background h-20" />
-              <Button className="w-full">Create Test Requisition</Button>
+              <textarea
+                value={orderNotes}
+                onChange={(e) => setOrderNotes(e.target.value)}
+                placeholder="Clinical Notes / Indications"
+                className="w-full px-3 py-2 border rounded-md bg-background h-20"
+              />
+              <Button className="w-full" onClick={handleOrderTest}>
+                <Plus className="h-4 w-4 mr-2" /> Create Test Requisition
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

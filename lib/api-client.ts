@@ -186,9 +186,42 @@ export const adminApi = {
     });
   },
 
+  async createStaffUser(data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    password: string;
+    confirmPassword: string;
+    role: 'doctor' | 'receptionist';
+    department?: string;
+    specialization?: string;
+  }) {
+    return apiRequest('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      includeAuth: true,
+    });
+  },
+
   async getActivityFeed() {
     return apiRequest('/admin/activity', {
       method: 'GET',
+      includeAuth: true,
+    });
+  },
+
+  async getSettings() {
+    return apiRequest('/admin/settings', {
+      method: 'GET',
+      includeAuth: true,
+    });
+  },
+
+  async updateSettings(data: Record<string, unknown>) {
+    return apiRequest('/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
       includeAuth: true,
     });
   },
@@ -230,7 +263,9 @@ export const receptionApi = {
     consultantName: string;
     referringSource?: string;
     sponsorship?: string;
-    consultationCharges?: number;
+    collectConsultationCharge?: boolean;
+    consultationCharge?: number;
+    paymentMethod?: string;
   }) {
     return apiRequest('/registration/opd', {
       method: 'POST',
@@ -345,6 +380,7 @@ export const receptionApi = {
     doctorId: string;
     doctorName: string;
     department: string;
+    doctorType?: string;
     date: string;
     timeSlots: { startTime: string; endTime: string }[];
   }) {
@@ -387,18 +423,33 @@ export const receptionApi = {
       includeAuth: true,
     });
   },
+
+  async getRoomStatus() {
+    return apiRequest('/reception/rooms/status', {
+      method: 'GET',
+      includeAuth: true,
+    });
+  },
+
+  async getTariffs() {
+    return apiRequest('/reception/tariffs', {
+      method: 'GET',
+      includeAuth: true,
+    });
+  },
 };
 
 /**
  * Billing API Methods
  */
 export const billingApi = {
-  async getBills(patientId?: string, status?: string, startDate?: string, endDate?: string, page = 1, limit = 10) {
+  async getBills(patientId?: string, status?: string, startDate?: string, endDate?: string, page = 1, limit = 10, billType?: 'consultation' | 'lab') {
     const query = new URLSearchParams();
     if (patientId) query.append('patientId', patientId);
     if (status && status !== 'all') query.append('status', status);
     if (startDate) query.append('startDate', startDate);
     if (endDate) query.append('endDate', endDate);
+    if (billType) query.append('billType', billType);
     query.append('page', page.toString());
     query.append('limit', limit.toString());
 
@@ -416,6 +467,7 @@ export const billingApi = {
     paymentType: 'Cash' | 'Credit' | 'Insurance' | 'Online';
     timeSlot: 'Morning' | 'Evening' | 'Night';
     doctorType: 'General' | 'Emergency';
+    billType?: 'consultation' | 'lab';
     services: { description: string; category: string; quantity: number }[];
     concessionPercentage?: number;
     concessionAmount?: number;
@@ -430,6 +482,13 @@ export const billingApi = {
 
   async getReceipt(receiptId: string) {
     return apiRequest(`/billing/receipt/${receiptId}`, {
+      method: 'GET',
+      includeAuth: true,
+    });
+  },
+
+  async getReceipts() {
+    return apiRequest('/billing/receipt', {
       method: 'GET',
       includeAuth: true,
     });
@@ -513,6 +572,14 @@ export const investigationsApi = {
       includeAuth: true,
     });
   },
+
+  async importEquipmentResults(investigationId: string, parameters: Record<string, string>, source: string) {
+    return apiRequest(`/investigations/lab/${investigationId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ action: 'import_equipment_results', parameters, source }),
+      includeAuth: true,
+    });
+  },
 };
 
 /**
@@ -557,6 +624,26 @@ export const doctorApi = {
     notes?: string;
     appointmentDate?: string;
     reason?: string;
+    doctorSummary?: string;
+    consultationFee?: number;
+    prescribedMedicines?: Array<{
+      medication: string;
+      dosage: string;
+      frequency: string;
+      duration?: string;
+      quantity?: string | number;
+      rate?: string | number;
+      instructions?: string;
+    }>;
+    opdConsultation?: {
+      complaints?: string;
+      history?: string;
+      diagnosis?: string;
+      investigation?: string;
+      medicines?: string;
+      advice?: string;
+      nextVisit?: string;
+    };
   }) {
     return apiRequest(`/doctor/appointments/${appointmentId}`, {
       method: 'PUT',

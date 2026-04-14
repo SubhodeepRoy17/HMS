@@ -10,7 +10,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-      <div className="flex items-center justify-between h-16 px-6 md:px-8">
+      <div className="flex items-center justify-between h-16 px-4 sm:px-6 md:px-8">
         {/* Left side - Hospital Name */}
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-primary/10">

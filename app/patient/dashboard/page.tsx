@@ -10,7 +10,7 @@ import {
   Pill, Microscope, Stethoscope, Clock, Heart, 
   Syringe, ArrowRight, Download 
 } from 'lucide-react'
-import { patientApi, doctorApi, investigationsApi } from '@/lib/api-client'
+import { patientApi } from '@/lib/api-client'
 import { useAuth } from '@/context/auth-context'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -103,10 +103,11 @@ export default function PatientDashboard() {
       let recentPresc: RecentPrescription[] = []
       
       try {
-        const prescriptionsRes = await doctorApi.getPrescriptions(user?.patientId || user?._id)
-        if (prescriptionsRes.success && prescriptionsRes.data && Array.isArray(prescriptionsRes.data)) {
-          activePrescriptions = prescriptionsRes.data.filter((p: any) => p.status === 'active').length
-          recentPresc = prescriptionsRes.data.slice(0, 2).map((p: any) => ({
+        const historyRes = await patientApi.getMedicalHistory()
+        const prescriptions = (historyRes.success && historyRes.data && (historyRes.data as any).prescriptions) || []
+        if (Array.isArray(prescriptions)) {
+          activePrescriptions = prescriptions.filter((p: any) => p.status === 'active').length
+          recentPresc = prescriptions.slice(0, 2).map((p: any) => ({
             _id: p._id,
             medication: p.medication,
             dosage: p.dosage,
@@ -126,14 +127,14 @@ export default function PatientDashboard() {
       let recentLab: RecentLabResult[] = []
       
       try {
-        const labRes = await investigationsApi.getInvestigations(user?.patientId || user?._id)
+        const labRes = await patientApi.getLabResults()
         if (labRes.success && labRes.data && Array.isArray(labRes.data)) {
           completedTests = labRes.data.filter((l: any) => l.status === 'completed' || l.status === 'verified').length
           pendingTests = labRes.data.filter((l: any) => l.status === 'pending' || l.status === 'in-progress').length
           recentLab = labRes.data.slice(0, 2).map((l: any) => ({
             _id: l._id,
             testName: l.testName || 'Lab Test',
-            date: l.date || l.createdAt,
+            date: l.date || l.requisitionDate || l.createdAt,
             status: l.status,
             isAbnormal: l.parameters?.some((p: any) => p.isAbnormal)
           }))
@@ -372,7 +373,7 @@ export default function PatientDashboard() {
                   <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                   <p className="text-muted-foreground">No upcoming appointments</p>
                   <Link href="/patient/appointments">
-                    <Button className="mt-4">Book an Appointment</Button>
+                    <Button className="mt-4">View Appointment History</Button>
                   </Link>
                 </div>
               )}
@@ -462,34 +463,6 @@ export default function PatientDashboard() {
               </CardContent>
             </Card>
           )}
-
-          {/* Quick Links */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Links</CardTitle>
-              <CardDescription>Access common features</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Link href="/patient/appointments">
-                <Button variant="outline" className="w-full justify-start">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  View Appointments
-                </Button>
-              </Link>
-              <Link href="/patient/medical-history">
-                <Button variant="outline" className="w-full justify-start">
-                  <Activity className="h-4 w-4 mr-2" />
-                  Medical History
-                </Button>
-              </Link>
-              <Link href="/patient/lab-results">
-                <Button variant="outline" className="w-full justify-start">
-                  <Download className="h-4 w-4 mr-2" />
-                  Lab Reports
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
         </div>
       </div>
 

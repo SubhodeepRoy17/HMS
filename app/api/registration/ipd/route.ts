@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase, getNextSequence, generateId, toObjectId } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { verifyToken, generateTempPassword, hashPassword } from '@/lib/auth';
 
 function extractAndVerifyAuth(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -18,7 +18,7 @@ function extractAndVerifyAuth(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = extractAndVerifyAuth(req);
-    if (!user || (user.role !== 'receptionist' && user.role !== 'admin')) {
+    if (!user || user.role !== 'receptionist') {
       return NextResponse.json(
         { success: false, message: 'Unauthorized' },
         { status: 403 }
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!firstName || !lastName || !age || !sex || !phone || !department || !consultantId || !roomNumber) {
+    if (!firstName || !lastName || !age || !sex || !phone || !email || !department || !consultantId || !roomNumber) {
       return NextResponse.json(
         { success: false, message: 'Missing required fields. Room number is mandatory for IPD' },
         { status: 400 }
@@ -68,14 +68,52 @@ export async function POST(req: NextRequest) {
     });
 
     let finalPatientId = patientId;
+    let userId = null;
+    let credentials: { email: string; password: string } | null = null;
+
     if (existingPatient) {
       finalPatientId = existingPatient.patientId;
+      userId = existingPatient.userId || null;
+    } else {
+      const loginEmail = email.toLowerCase();
+      const existingUser = await db.collection('users').findOne({
+        $or: [
+          { email: loginEmail },
+          { phone }
+        ]
+      });
+
+      if (existingUser) {
+        userId = existingUser._id;
+      } else {
+        const tempPassword = generateTempPassword(firstName, lastName);
+        const passwordHash = await hashPassword(tempPassword);
+        const createdUser = await db.collection('users').insertOne({
+          firstName,
+          lastName,
+          email: loginEmail,
+          password: passwordHash,
+          phone,
+          role: 'patient',
+          isActive: true,
+          isEmailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        userId = createdUser.insertedId;
+        credentials = {
+          email: loginEmail,
+          password: tempPassword,
+        };
+      }
     }
 
     // Create IPD registration
     const registration = {
       patientId: finalPatientId,
       registrationNumber,
+      userId,
       patientType: 'IPD',
       demographics: {
         firstName,
@@ -143,9 +181,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'IPD patient admitted successfully',
+      credentials,
       data: {
         registration: newRegistration,
         bedAllocation,
+        credentials,
       },
     }, { status: 201 });
 

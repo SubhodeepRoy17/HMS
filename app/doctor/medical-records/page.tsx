@@ -43,6 +43,8 @@ interface FormData {
 }
 
 export default function DoctorMedicalRecordsPage() {
+  const PAGE_SIZE = 5
+
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -58,6 +60,10 @@ export default function DoctorMedicalRecordsPage() {
   const [isSearchingPatient, setIsSearchingPatient] = useState(false)
   const [selectedRecord, setSelectedRecord] = useState<MedicalRecord | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
+  const [allPage, setAllPage] = useState(1)
+  const [clinicalPage, setClinicalPage] = useState(1)
+  const [labPage, setLabPage] = useState(1)
+  const [imagingPage, setImagingPage] = useState(1)
   
   const [formData, setFormData] = useState<FormData>({
     patientId: '',
@@ -150,6 +156,10 @@ export default function DoctorMedicalRecordsPage() {
     }
 
     setFilteredRecords(filtered)
+    setAllPage(1)
+    setClinicalPage(1)
+    setLabPage(1)
+    setImagingPage(1)
   }
 
   const handleCreateRecord = async (e: React.FormEvent) => {
@@ -262,6 +272,20 @@ export default function DoctorMedicalRecordsPage() {
     return records.filter(r => r.recordType === type).length
   }
 
+  const clinicalRecords = filteredRecords.filter((r) => r.recordType === 'clinical')
+  const labRecords = filteredRecords.filter((r) => r.recordType === 'lab')
+  const imagingRecords = filteredRecords.filter((r) => r.recordType === 'imaging')
+
+  const allTotalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE))
+  const clinicalTotalPages = Math.max(1, Math.ceil(clinicalRecords.length / PAGE_SIZE))
+  const labTotalPages = Math.max(1, Math.ceil(labRecords.length / PAGE_SIZE))
+  const imagingTotalPages = Math.max(1, Math.ceil(imagingRecords.length / PAGE_SIZE))
+
+  const paginatedAllRecords = filteredRecords.slice((allPage - 1) * PAGE_SIZE, allPage * PAGE_SIZE)
+  const paginatedClinicalRecords = clinicalRecords.slice((clinicalPage - 1) * PAGE_SIZE, clinicalPage * PAGE_SIZE)
+  const paginatedLabRecords = labRecords.slice((labPage - 1) * PAGE_SIZE, labPage * PAGE_SIZE)
+  const paginatedImagingRecords = imagingRecords.slice((imagingPage - 1) * PAGE_SIZE, imagingPage * PAGE_SIZE)
+
   return (
     <div className="space-y-8">
       <div>
@@ -319,7 +343,7 @@ export default function DoctorMedicalRecordsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {filteredRecords.length > 0 ? (
-                filteredRecords.map((record) => (
+                paginatedAllRecords.map((record) => (
                   <RecordCard key={record._id} record={record} />
                 ))
               ) : (
@@ -332,6 +356,17 @@ export default function DoctorMedicalRecordsPage() {
                   </p>
                 </div>
               )}
+              {filteredRecords.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setAllPage((prev) => Math.max(1, prev - 1))} disabled={allPage === 1}>
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {allPage} of {allTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setAllPage((prev) => Math.min(allTotalPages, prev + 1))} disabled={allPage === allTotalPages}>
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -342,9 +377,23 @@ export default function DoctorMedicalRecordsPage() {
               <CardTitle>Clinical Notes</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {filteredRecords.filter(r => r.recordType === 'clinical').map((record) => (
+              {paginatedClinicalRecords.map((record) => (
                 <RecordCard key={record._id} record={record} />
               ))}
+              {clinicalRecords.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">No clinical records found</div>
+              )}
+              {clinicalRecords.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setClinicalPage((prev) => Math.max(1, prev - 1))} disabled={clinicalPage === 1}>
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {clinicalPage} of {clinicalTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setClinicalPage((prev) => Math.min(clinicalTotalPages, prev + 1))} disabled={clinicalPage === clinicalTotalPages}>
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -355,9 +404,23 @@ export default function DoctorMedicalRecordsPage() {
               <CardTitle>Lab Test Results</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {filteredRecords.filter(r => r.recordType === 'lab').map((record) => (
+              {paginatedLabRecords.map((record) => (
                 <RecordCard key={record._id} record={record} />
               ))}
+              {labRecords.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">No lab records found</div>
+              )}
+              {labRecords.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setLabPage((prev) => Math.max(1, prev - 1))} disabled={labPage === 1}>
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {labPage} of {labTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setLabPage((prev) => Math.min(labTotalPages, prev + 1))} disabled={labPage === labTotalPages}>
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -368,9 +431,23 @@ export default function DoctorMedicalRecordsPage() {
               <CardTitle>Imaging Records</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {filteredRecords.filter(r => r.recordType === 'imaging').map((record) => (
+              {paginatedImagingRecords.map((record) => (
                 <RecordCard key={record._id} record={record} />
               ))}
+              {imagingRecords.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">No imaging records found</div>
+              )}
+              {imagingRecords.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setImagingPage((prev) => Math.max(1, prev - 1))} disabled={imagingPage === 1}>
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {imagingPage} of {imagingTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setImagingPage((prev) => Math.min(imagingTotalPages, prev + 1))} disabled={imagingPage === imagingTotalPages}>
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -422,7 +499,7 @@ export default function DoctorMedicalRecordsPage() {
                               setSelectedPatient(patient)
                               setFormData({
                                 ...formData,
-                                patientId: patient._id,
+                                patientId: patient.patientId,
                                 patientName: patient.demographics.fullName,
                               })
                             }}>

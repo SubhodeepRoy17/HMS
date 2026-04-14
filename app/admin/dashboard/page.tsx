@@ -16,7 +16,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Users, BarChart3, Settings, AlertCircle, CheckCircle2, Activity, TrendingUp, Plus, Stethoscope, UserCheck, Loader2 } from 'lucide-react'
-import { adminApi, authApi } from '@/lib/api-client'
+import { adminApi } from '@/lib/api-client'
 import { toast } from 'sonner'
 import {
   BarChart,
@@ -66,7 +66,6 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [doctors, setDoctors] = useState<User[]>([])
-  const [patients, setPatients] = useState<User[]>([])
   const [receptionists, setReceptionists] = useState<User[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -78,7 +77,7 @@ export default function AdminDashboard() {
     phone: '',
     password: '',
     confirmPassword: '',
-    role: 'patient',
+    role: 'receptionist',
     department: '',
     specialization: '',
   })
@@ -92,10 +91,9 @@ export default function AdminDashboard() {
       setIsLoading(true)
       setError(null)
 
-      const [statsRes, doctorsRes, patientsRes, receptionistsRes] = await Promise.all([
+      const [statsRes, doctorsRes, receptionistsRes] = await Promise.all([
         adminApi.getDashboardStats(),
         adminApi.getUsers('doctor'),
-        adminApi.getUsers('patient'),
         adminApi.getUsers('receptionist'),
       ])
 
@@ -107,10 +105,6 @@ export default function AdminDashboard() {
 
       if (doctorsRes.success && doctorsRes.data) {
         setDoctors(doctorsRes.data)
-      }
-
-      if (patientsRes.success && patientsRes.data) {
-        setPatients(patientsRes.data)
       }
 
       if (receptionistsRes.success && receptionistsRes.data) {
@@ -149,7 +143,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      const response = await authApi.register({
+      const response = await adminApi.createStaffUser({
         firstName: addUserForm.firstName,
         lastName: addUserForm.lastName,
         email: addUserForm.email,
@@ -171,7 +165,7 @@ export default function AdminDashboard() {
           phone: '',
           password: '',
           confirmPassword: '',
-          role: 'patient',
+          role: 'receptionist',
           department: '',
           specialization: '',
         })
@@ -363,14 +357,10 @@ export default function AdminDashboard() {
 
       {/* User Management Tabs */}
       <Tabs defaultValue="doctors" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="doctors" className="flex items-center gap-2">
             <Stethoscope className="h-4 w-4" />
             Doctors ({doctors.length})
-          </TabsTrigger>
-          <TabsTrigger value="patients" className="flex items-center gap-2">
-            <UserCheck className="h-4 w-4" />
-            Patients ({patients.length})
           </TabsTrigger>
           <TabsTrigger value="receptionists" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -430,59 +420,6 @@ export default function AdminDashboard() {
             ))}
             {doctors.length === 0 && (
               <Card><CardContent className="p-8 text-center text-muted-foreground">No doctors found</CardContent></Card>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Patients Tab */}
-        <TabsContent value="patients" className="space-y-4 mt-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-xl font-bold">Patients Management</h3>
-            <Dialog open={isDialogOpen && addUserForm.role === 'patient'} onOpenChange={(open) => {
-              setIsDialogOpen(open)
-              if (open) setAddUserForm({ ...addUserForm, role: 'patient', department: '', specialization: '' })
-            }}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Add Patient
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Add New Patient</DialogTitle>
-                  <DialogDescription>Create a new patient account</DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleAddUser} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Input placeholder="First Name" value={addUserForm.firstName} onChange={(e) => setAddUserForm({...addUserForm, firstName: e.target.value})} required />
-                    <Input placeholder="Last Name" value={addUserForm.lastName} onChange={(e) => setAddUserForm({...addUserForm, lastName: e.target.value})} required />
-                  </div>
-                  <Input type="email" placeholder="Email" value={addUserForm.email} onChange={(e) => setAddUserForm({...addUserForm, email: e.target.value})} required />
-                  <Input placeholder="Phone" value={addUserForm.phone} onChange={(e) => setAddUserForm({...addUserForm, phone: e.target.value})} required />
-                  <Input type="password" placeholder="Password" value={addUserForm.password} onChange={(e) => setAddUserForm({...addUserForm, password: e.target.value})} required />
-                  <Input type="password" placeholder="Confirm Password" value={addUserForm.confirmPassword} onChange={(e) => setAddUserForm({...addUserForm, confirmPassword: e.target.value})} required />
-                  <Button type="submit" className="w-full">Add Patient</Button>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-          <div className="space-y-3">
-            {patients.map((patient) => (
-              <Card key={patient._id}>
-                <CardContent className="p-4 flex justify-between items-center">
-                  <div>
-                    <p className="font-semibold">{patient.firstName} {patient.lastName}</p>
-                    <p className="text-sm text-muted-foreground">{patient.email} • {patient.phone}</p>
-                  </div>
-                  <Badge className={patient.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100'}>
-                    {patient.isActive ? 'Active' : 'Inactive'}
-                  </Badge>
-                </CardContent>
-              </Card>
-            ))}
-            {patients.length === 0 && (
-              <Card><CardContent className="p-8 text-center text-muted-foreground">No patients found</CardContent></Card>
             )}
           </div>
         </TabsContent>

@@ -144,15 +144,16 @@ export async function POST(req: NextRequest) {
     const nextDay = new Date(scheduleDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    // Check if time slot is available - using date range
+    // Check if time slot is available
     const schedule = await db.collection('doctorSchedules').findOne({
-      doctorId: toObjectId(doctorId),
-      date: { $gte: scheduleDate, $lt: nextDay },  // ✅ Fixed date range
+      doctorId: toObjectId(doctorId),  // ✅ Query as ObjectId (consistent storage)
+      date: { $gte: scheduleDate, $lt: nextDay },
       'timeSlots.startTime': timeSlot,
       'timeSlots.isAvailable': true,
     });
 
     if (!schedule) {
+      console.log('Schedule not found for:', { doctorId: toObjectId(doctorId), timeSlot, date: scheduleDate });
       return NextResponse.json(
         { success: false, message: 'Selected time slot is not available' },
         { status: 400 }
@@ -187,7 +188,7 @@ export async function POST(req: NextRequest) {
     // Update schedule to mark time slot as booked
     await db.collection('doctorSchedules').updateOne(
       {
-        doctorId: toObjectId(doctorId),
+        doctorId: toObjectId(doctorId),  // ✅ Query as ObjectId (consistent storage)
         date: { $gte: scheduleDate, $lt: nextDay },
         'timeSlots.startTime': timeSlot,
       },

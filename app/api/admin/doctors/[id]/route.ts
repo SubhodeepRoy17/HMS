@@ -18,7 +18,7 @@ function extractAndVerifyAuth(req: NextRequest) {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verify authentication
@@ -31,11 +31,12 @@ export async function GET(
     }
 
     const { db } = await connectToDatabase();
+    const { id } = await params;
 
     const doctor = await db
       .collection('users')
       .findOne({
-        _id: new ObjectId(params.id),
+        _id: new ObjectId(id),
         role: 'doctor',
       });
 
@@ -61,7 +62,7 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verify authentication
@@ -75,12 +76,13 @@ export async function PUT(
 
     const body = await req.json();
     const { db } = await connectToDatabase();
+    const { id } = await params;
 
     // Check if doctor exists
     const existingDoctor = await db
       .collection('users')
       .findOne({
-        _id: new ObjectId(params.id),
+        _id: new ObjectId(id),
         role: 'doctor',
       });
 
@@ -95,7 +97,7 @@ export async function PUT(
     if (body.email && body.email.toLowerCase() !== existingDoctor.email) {
       const emailExists = await db
         .collection('users')
-        .findOne({ email: body.email.toLowerCase(), _id: { $ne: new ObjectId(params.id) } });
+        .findOne({ email: body.email.toLowerCase(), _id: { $ne: new ObjectId(id) } });
 
       if (emailExists) {
         return NextResponse.json(
@@ -121,7 +123,7 @@ export async function PUT(
 
     const result = await db
       .collection('users')
-      .updateOne({ _id: new ObjectId(params.id) }, { $set: updateData });
+      .updateOne({ _id: new ObjectId(id) }, { $set: updateData });
 
     if (result.matchedCount === 0) {
       return NextResponse.json(
@@ -133,7 +135,7 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       message: 'Doctor updated successfully',
-      data: { _id: params.id, ...updateData },
+      data: { _id: id, ...updateData },
     });
   } catch (error) {
     console.error('Error updating doctor:', error);
@@ -146,7 +148,7 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verify authentication
@@ -159,12 +161,13 @@ export async function DELETE(
     }
 
     const { db } = await connectToDatabase();
+    const { id } = await params;
 
     // Check if doctor exists
     const doctor = await db
       .collection('users')
       .findOne({
-        _id: new ObjectId(params.id),
+        _id: new ObjectId(id),
         role: 'doctor',
       });
 
@@ -178,7 +181,7 @@ export async function DELETE(
     // Delete doctor
     const result = await db
       .collection('users')
-      .deleteOne({ _id: new ObjectId(params.id) });
+      .deleteOne({ _id: new ObjectId(id) });
 
     if (result.deletedCount === 0) {
       return NextResponse.json(

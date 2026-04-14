@@ -15,6 +15,7 @@ export interface Appointment {
   reason: string;
   notes?: string;
   status: 'scheduled' | 'arrived' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
+  doctorSummary?: string; // Clinical summary written by doctor after consultation
   createdBy: ObjectId;
   createdAt: Date;
   updatedAt: Date;

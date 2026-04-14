@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase, toObjectId, getNextSequence, generateId } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
-import { Document } from 'mongodb';
 
 function extractAndVerifyAuth(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -18,7 +17,7 @@ function extractAndVerifyAuth(req: NextRequest) {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = extractAndVerifyAuth(req);
@@ -30,7 +29,7 @@ export async function GET(
     }
 
     const { db } = await connectToDatabase();
-    const receiptId = params.id;
+    const { id: receiptId } = await params;
 
     // Find receipt by ID or receipt number
     let receipt;
@@ -57,10 +56,30 @@ export async function GET(
       );
     }
 
+    // Patients can only view receipts for their own bills
+    if (user.role === 'patient') {
+      let resolvedPatientId = user.patientId as string | undefined;
+
+      if (!resolvedPatientId) {
+        const patientRegistration = await db.collection('patientRegistrations').findOne(
+          { userId: toObjectId(user.userId) },
+          { sort: { registrationDate: -1 }, projection: { patientId: 1 } }
+        );
+        resolvedPatientId = patientRegistration?.patientId;
+      }
+
+      if (!resolvedPatientId || bill.patientId !== resolvedPatientId) {
+        return NextResponse.json(
+          { success: false, message: 'Unauthorized to view this receipt' },
+          { status: 403 }
+        );
+      }
+    }
+
     // Get user who printed receipt
     const printedBy = await db.collection('users').findOne(
       { _id: receipt.printedBy },
-      { projection: { password: 0, firstName: 1, lastName: 1, email: 1 } }
+      { projection: { firstName: 1, lastName: 1, email: 1 } }
     );
 
     return NextResponse.json({
@@ -83,19 +102,19 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = extractAndVerifyAuth(req);
-    if (!user || (user.role !== 'receptionist' && user.role !== 'admin')) {
+    if (!user || user.role !== 'patient') {
       return NextResponse.json(
-        { success: false, message: 'Unauthorized' },
+        { success: false, message: 'Only patients can make bill payments' },
         { status: 403 }
       );
     }
 
     const { db } = await connectToDatabase();
-    const billId = params.id;
+    const { id: billId } = await params;
 
     const bill = await db.collection('bills').findOne({ _id: toObjectId(billId) });
 
@@ -104,6 +123,26 @@ export async function POST(
         { success: false, message: 'Bill not found' },
         { status: 404 }
       );
+    }
+
+    // Patients can only pay their own bills
+    if (user.role === 'patient') {
+      let resolvedPatientId = user.patientId as string | undefined;
+
+      if (!resolvedPatientId) {
+        const patientRegistration = await db.collection('patientRegistrations').findOne(
+          { userId: toObjectId(user.userId) },
+          { sort: { registrationDate: -1 }, projection: { patientId: 1 } }
+        );
+        resolvedPatientId = patientRegistration?.patientId;
+      }
+
+      if (!resolvedPatientId || bill.patientId !== resolvedPatientId) {
+        return NextResponse.json(
+          { success: false, message: 'Unauthorized to pay this bill' },
+          { status: 403 }
+        );
+      }
     }
 
     if (bill.status === 'paid') {

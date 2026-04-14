@@ -17,7 +17,7 @@ function extractAndVerifyAuth(req: NextRequest) {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = extractAndVerifyAuth(req);
@@ -29,7 +29,7 @@ export async function GET(
     }
 
     const { db } = await connectToDatabase();
-    const investigationId = params.id;
+    const { id: investigationId } = await params;
 
     const investigation = await db.collection('investigations').findOne({ investigationId });
 
@@ -41,11 +41,13 @@ export async function GET(
     }
 
     // Check authorization
-    if (user.role === 'patient' && investigation.patientId.toString() !== user.userId) {
-      return NextResponse.json(
-        { success: false, message: 'Unauthorized to view this report' },
-        { status: 403 }
-      );
+    if (user.role === 'patient') {
+      if (!user.patientId || investigation.patientId !== user.patientId) {
+        return NextResponse.json(
+          { success: false, message: 'Unauthorized to view this report' },
+          { status: 403 }
+        );
+      }
     }
 
     // Get previous reports for comparison

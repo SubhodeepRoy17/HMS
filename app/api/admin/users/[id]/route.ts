@@ -18,7 +18,7 @@ function extractAndVerifyAuth(req: NextRequest) {
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = extractAndVerifyAuth(req);
@@ -31,10 +31,11 @@ export async function PUT(
 
     const body = await req.json();
     const { db } = await connectToDatabase();
+    const { id } = await params;
 
     const existingUser = await db
       .collection('users')
-      .findOne({ _id: new ObjectId(params.id) });
+      .findOne({ _id: new ObjectId(id) });
 
     if (!existingUser) {
       return NextResponse.json(
@@ -59,7 +60,7 @@ export async function PUT(
     const result = await db
       .collection('users')
       .updateOne(
-        { _id: new ObjectId(params.id) },
+        { _id: new ObjectId(id) },
         { $set: updateData }
       );
 
@@ -73,7 +74,7 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       message: `User updated successfully`,
-      data: { _id: params.id, ...updateData },
+      data: { _id: id, ...updateData },
     });
   } catch (error) {
     console.error('Error updating user:', error);

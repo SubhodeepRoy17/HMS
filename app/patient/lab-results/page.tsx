@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { FileText, Download, Loader2, Microscope, TrendingUp, TrendingDown, Minus, Eye } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { investigationsApi } from '@/lib/api-client'
+import { patientApi } from '@/lib/api-client'
 import { useAuth } from '@/context/auth-context'
 import { toast } from 'sonner'
 
@@ -31,12 +31,17 @@ interface LabResult {
 }
 
 export default function PatientLabResultsPage() {
+  const PAGE_SIZE = 5
+
   const { user } = useAuth()
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [labResults, setLabResults] = useState<LabResult[]>([])
   const [selectedResult, setSelectedResult] = useState<LabResult | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
+  const [allPage, setAllPage] = useState(1)
+  const [completedPage, setCompletedPage] = useState(1)
+  const [pendingPage, setPendingPage] = useState(1)
 
   useEffect(() => {
     setIsClient(true)
@@ -46,56 +51,14 @@ export default function PatientLabResultsPage() {
   const loadLabResults = async () => {
     try {
       setIsLoading(true)
-      const response = await investigationsApi.getInvestigations(user?._id)
+      const response = await patientApi.getLabResults()
       if (response.success && response.data) {
         setLabResults(response.data)
+        setAllPage(1)
+        setCompletedPage(1)
+        setPendingPage(1)
       } else {
-        // Demo data for testing
-        setLabResults([
-          {
-            _id: '1',
-            investigationId: 'INV001',
-            testName: 'Complete Blood Count',
-            testCategory: 'Pathology',
-            date: '2024-03-25',
-            status: 'completed',
-            parameters: [
-              { name: 'Hemoglobin', value: '14.2', unit: 'g/dL', referenceRange: '13.5-17.5', isAbnormal: false },
-              { name: 'WBC', value: '7500', unit: 'cells/μL', referenceRange: '4500-11000', isAbnormal: false },
-              { name: 'Platelets', value: '250000', unit: 'thousand/μL', referenceRange: '150-400', isAbnormal: false }
-            ],
-            reportGeneratedDate: '2024-03-26',
-            verifiedBy: 'Dr. Lab Manager'
-          },
-          {
-            _id: '2',
-            investigationId: 'INV002',
-            testName: 'Liver Function Test',
-            testCategory: 'Pathology',
-            date: '2024-03-24',
-            status: 'completed',
-            parameters: [
-              { name: 'SGOT', value: '45', unit: 'U/L', referenceRange: '10-40', isAbnormal: true, interpretation: 'Elevated' },
-              { name: 'SGPT', value: '52', unit: 'U/L', referenceRange: '7-56', isAbnormal: false },
-              { name: 'Total Bilirubin', value: '0.9', unit: 'mg/dL', referenceRange: '0.1-1.2', isAbnormal: false }
-            ],
-            reportGeneratedDate: '2024-03-25',
-            verifiedBy: 'Dr. Lab Manager'
-          },
-          {
-            _id: '3',
-            investigationId: 'INV003',
-            testName: 'Lipid Profile',
-            testCategory: 'Pathology',
-            date: '2024-03-20',
-            status: 'pending',
-            parameters: [
-              { name: 'Total Cholesterol', value: '', unit: 'mg/dL', referenceRange: '<200', isAbnormal: false },
-              { name: 'HDL', value: '', unit: 'mg/dL', referenceRange: '>40', isAbnormal: false },
-              { name: 'LDL', value: '', unit: 'mg/dL', referenceRange: '<100', isAbnormal: false }
-            ]
-          }
-        ])
+        setLabResults([])
       }
     } catch (error) {
       console.error('Error loading lab results:', error)
@@ -141,6 +104,12 @@ export default function PatientLabResultsPage() {
 
   const completedResults = labResults.filter(r => r.status === 'completed' || r.status === 'verified')
   const pendingResults = labResults.filter(r => r.status === 'pending' || r.status === 'in-progress' || r.status === 'entered')
+  const allTotalPages = Math.max(1, Math.ceil(labResults.length / PAGE_SIZE))
+  const completedTotalPages = Math.max(1, Math.ceil(completedResults.length / PAGE_SIZE))
+  const pendingTotalPages = Math.max(1, Math.ceil(pendingResults.length / PAGE_SIZE))
+  const paginatedAllResults = labResults.slice((allPage - 1) * PAGE_SIZE, allPage * PAGE_SIZE)
+  const paginatedCompletedResults = completedResults.slice((completedPage - 1) * PAGE_SIZE, completedPage * PAGE_SIZE)
+  const paginatedPendingResults = pendingResults.slice((pendingPage - 1) * PAGE_SIZE, pendingPage * PAGE_SIZE)
 
   if (!isClient) {
     return <div className="h-96 bg-muted animate-pulse rounded-lg" />
@@ -172,7 +141,7 @@ export default function PatientLabResultsPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : labResults.length > 0 ? (
-                labResults.map((lab) => (
+                paginatedAllResults.map((lab) => (
                   <div key={lab._id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
@@ -233,6 +202,17 @@ export default function PatientLabResultsPage() {
                   <p className="text-muted-foreground">No lab results found</p>
                 </div>
               )}
+              {labResults.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setAllPage((prev) => Math.max(1, prev - 1))} disabled={allPage === 1}>
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {allPage} of {allTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setAllPage((prev) => Math.min(allTotalPages, prev + 1))} disabled={allPage === allTotalPages}>
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -244,7 +224,7 @@ export default function PatientLabResultsPage() {
               <CardDescription>Your available test reports</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {completedResults.map((lab) => (
+              {paginatedCompletedResults.map((lab) => (
                 <div key={lab._id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                   <div>
                     <h3 className="font-semibold">{lab.testName}</h3>
@@ -262,6 +242,20 @@ export default function PatientLabResultsPage() {
                   </div>
                 </div>
               ))}
+              {completedResults.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">No completed reports found</div>
+              )}
+              {completedResults.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setCompletedPage((prev) => Math.max(1, prev - 1))} disabled={completedPage === 1}>
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {completedPage} of {completedTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setCompletedPage((prev) => Math.min(completedTotalPages, prev + 1))} disabled={completedPage === completedTotalPages}>
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -273,7 +267,7 @@ export default function PatientLabResultsPage() {
               <CardDescription>Tests awaiting results</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {pendingResults.map((lab) => (
+              {paginatedPendingResults.map((lab) => (
                 <div key={lab._id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                   <div>
                     <h3 className="font-semibold">{lab.testName}</h3>
@@ -288,6 +282,17 @@ export default function PatientLabResultsPage() {
                 <div className="text-center py-8">
                   <Microscope className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                   <p className="text-muted-foreground">No pending tests</p>
+                </div>
+              )}
+              {pendingResults.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => setPendingPage((prev) => Math.max(1, prev - 1))} disabled={pendingPage === 1}>
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {pendingPage} of {pendingTotalPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setPendingPage((prev) => Math.min(pendingTotalPages, prev + 1))} disabled={pendingPage === pendingTotalPages}>
+                    Next
+                  </Button>
                 </div>
               )}
             </CardContent>

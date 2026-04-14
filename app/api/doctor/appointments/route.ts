@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     }
     
     if (patientId) {
-      filter.patientId = new ObjectId(patientId);
+      filter.patientId = patientId;
     }
 
     // Get total count for pagination

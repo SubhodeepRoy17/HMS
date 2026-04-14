@@ -64,15 +64,17 @@ export async function GET(req: NextRequest) {
         let schedules = [];
         
         if (date) {
-          // Get schedule for specific date
+          // Get schedule for specific date - use date range for consistency
           const targetDate = new Date(date);
           targetDate.setHours(0, 0, 0, 0);
+          const nextDay = new Date(targetDate);
+          nextDay.setDate(nextDay.getDate() + 1);
           
           schedules = await db
             .collection('doctorSchedules')
             .find({ 
-              doctorId: doctor._id,
-              date: targetDate
+              doctorId: doctor._id,  // ✅ ObjectId from users collection
+              date: { $gte: targetDate, $lt: nextDay }
             })
             .toArray();
         } else {
@@ -86,7 +88,7 @@ export async function GET(req: NextRequest) {
           schedules = await db
             .collection('doctorSchedules')
             .find({ 
-              doctorId: doctor._id,
+              doctorId: doctor._id,  // ✅ ObjectId from users collection
               date: { $gte: startDate, $lte: endDate }
             })
             .sort({ date: 1 })

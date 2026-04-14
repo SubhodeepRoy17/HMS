@@ -63,13 +63,19 @@ export async function GET(req: NextRequest) {
     // Get appointment history with each patient
     const patientsWithHistory = await Promise.all(
       patients.map(async (patient) => {
+        const registration = await db.collection('patientRegistrations').findOne(
+          { userId: patient._id },
+          { sort: { registrationDate: -1 } }
+        );
+
         const appointmentCount = await db.collection('appointments').countDocuments({
-          patientId: patient._id,
+          patientId: registration?.patientId,
           doctorId: new ObjectId(user.userId),
         });
 
         return {
           ...patient,
+          patientId: registration?.patientId,
           appointmentCount,
         };
       })

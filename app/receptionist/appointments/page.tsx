@@ -45,11 +45,12 @@ interface PatientSearchResult {
 }
 
 export default function ReceptionistAppointmentsPage() {
+  const PAGE_SIZE = 5
+
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
   
   // Form state
   const [showScheduleForm, setShowScheduleForm] = useState(false)
@@ -66,19 +67,25 @@ export default function ReceptionistAppointmentsPage() {
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [availableTimeSlots, setAvailableTimeSlots] = useState<string[]>([])
+  const [todayPage, setTodayPage] = useState(1)
+  const [upcomingPage, setUpcomingPage] = useState(1)
+  const [allPage, setAllPage] = useState(1)
 
   useEffect(() => {
     setIsClient(true)
     loadAppointments()
     loadDoctors()
-  }, [selectedDate])
+  }, [])
 
   const loadAppointments = async () => {
     try {
       setIsLoading(true)
-      const response = await receptionApi.getAppointments(undefined, undefined, selectedDate)
+      const response = await receptionApi.getAppointments(undefined, undefined, undefined, undefined, 1, 1000)
       if (response.success && response.data) {
         setAppointments(response.data)
+        setTodayPage(1)
+        setUpcomingPage(1)
+        setAllPage(1)
       }
     } catch (error) {
       console.error('Error loading appointments:', error)
@@ -159,7 +166,7 @@ export default function ReceptionistAppointmentsPage() {
       setIsSubmitting(true)
       
       const response = await receptionApi.createAppointment({
-        patientId: selectedPatient._id,
+        patientId: selectedPatient.patientId,
         patientName: selectedPatient.demographics.fullName,
         patientPhone: selectedPatient.demographics.phone,
         doctorId: formData.doctorId,
@@ -251,12 +258,29 @@ export default function ReceptionistAppointmentsPage() {
     return appointments.filter(apt => apt.appointmentDate.split('T')[0] > today && apt.status === 'scheduled')
   }
 
+  const handleViewDetails = (apt: Appointment) => {
+    toast.info(`Patient: ${apt.patientName} | Doctor: ${apt.doctorName} | Date: ${new Date(apt.appointmentDate).toLocaleDateString()} ${apt.timeSlot}`)
+  }
+
+  const handleReschedule = (apt: Appointment) => {
+    toast.info(`Use the Appointments API reschedule flow for ${apt.appointmentId}. UI form can be added next.`)
+  }
+
   if (!isClient) {
     return <div className="h-96 bg-muted animate-pulse rounded-lg" />
   }
 
   const todayAppointments = getTodayAppointments()
   const upcomingAppointments = getUpcomingAppointments()
+
+  const todayTotalPages = Math.max(1, Math.ceil(todayAppointments.length / PAGE_SIZE))
+  const paginatedTodayAppointments = todayAppointments.slice((todayPage - 1) * PAGE_SIZE, todayPage * PAGE_SIZE)
+
+  const upcomingTotalPages = Math.max(1, Math.ceil(upcomingAppointments.length / PAGE_SIZE))
+  const paginatedUpcomingAppointments = upcomingAppointments.slice((upcomingPage - 1) * PAGE_SIZE, upcomingPage * PAGE_SIZE)
+
+  const allTotalPages = Math.max(1, Math.ceil(appointments.length / PAGE_SIZE))
+  const paginatedAllAppointments = appointments.slice((allPage - 1) * PAGE_SIZE, allPage * PAGE_SIZE)
 
   return (
     <div className="space-y-8">
@@ -265,26 +289,11 @@ export default function ReceptionistAppointmentsPage() {
         <p className="text-muted-foreground mt-2 text-base">Schedule and manage patient appointments</p>
       </div>
 
-      {/* Date Filter */}
-      <div className="flex items-center gap-4">
-        <div>
-          <label className="text-sm font-medium">Filter by Date</label>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="ml-2 px-3 py-2 border rounded-md bg-background"
-          />
-        </div>
-        <Button variant="outline" onClick={loadAppointments} className="mt-6">
-          Refresh
-        </Button>
-      </div>
-
       <Tabs defaultValue="today" className="w-full">
         <TabsList>
           <TabsTrigger value="today">Today's Schedule ({todayAppointments.length})</TabsTrigger>
           <TabsTrigger value="upcoming">Upcoming ({upcomingAppointments.length})</TabsTrigger>
+          <TabsTrigger value="all">All Appointments ({appointments.length})</TabsTrigger>
           <TabsTrigger value="schedule">Schedule New</TabsTrigger>
         </TabsList>
 
@@ -300,7 +309,7 @@ export default function ReceptionistAppointmentsPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : todayAppointments.length > 0 ? (
-                todayAppointments.map((apt) => (
+                paginatedTodayAppointments.map((apt) => (
                   <div key={apt._id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
@@ -317,26 +326,14 @@ export default function ReceptionistAppointmentsPage() {
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       {apt.status === 'scheduled' && (
-                        <>
-                          <Button size="sm" onClick={() => handleUpdateStatus(apt._id, 'arrived')}>
-                            Mark Arrived
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleCancelAppointment(apt._id)}>
-                            Cancel
-                          </Button>
-                        </>
-                      )}
-                      {apt.status === 'arrived' && (
-                        <Button size="sm" onClick={() => handleUpdateStatus(apt._id, 'in-progress')}>
-                          Start Consultation
+                        <Button size="sm" onClick={() => handleUpdateStatus(apt.appointmentId, 'arrived')}>
+                          Mark Arrived
                         </Button>
                       )}
-                      {apt.status === 'in-progress' && (
-                        <Button size="sm" onClick={() => handleUpdateStatus(apt._id, 'completed')}>
-                          Complete
-                        </Button>
+                      {(apt.status === 'arrived' || apt.status === 'in-progress' || apt.status === 'completed') && (
+                        <Badge className="bg-green-100 text-green-800">Checked In</Badge>
                       )}
-                      <Button size="sm" variant="outline">View Details</Button>
+                      <Button size="sm" variant="outline" onClick={() => handleViewDetails(apt)}>View Details</Button>
                     </div>
                   </div>
                 ))
@@ -344,6 +341,29 @@ export default function ReceptionistAppointmentsPage() {
                 <div className="text-center py-8">
                   <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
                   <p className="text-muted-foreground">No appointments scheduled for today</p>
+                </div>
+              )}
+              {todayAppointments.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTodayPage((prev) => Math.max(1, prev - 1))}
+                    disabled={todayPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Page {todayPage} of {todayTotalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTodayPage((prev) => Math.min(todayTotalPages, prev + 1))}
+                    disabled={todayPage === todayTotalPages}
+                  >
+                    Next
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -357,7 +377,8 @@ export default function ReceptionistAppointmentsPage() {
               <CardDescription>Next 7 days</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {upcomingAppointments.map((apt) => (
+              {upcomingAppointments.length > 0 ? (
+                paginatedUpcomingAppointments.map((apt) => (
                 <div key={apt._id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                   <div>
                     <h3 className="font-semibold">{apt.patientName}</h3>
@@ -367,13 +388,100 @@ export default function ReceptionistAppointmentsPage() {
                     <p className="text-sm text-muted-foreground mt-1">{apt.reason}</p>
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => handleCancelAppointment(apt._id)}>
+                    <Button size="sm" variant="outline" onClick={() => handleCancelAppointment(apt.appointmentId)}>
                       Cancel
                     </Button>
-                    <Button size="sm" variant="outline">Reschedule</Button>
+                    <Button size="sm" variant="outline" onClick={() => handleReschedule(apt)}>Reschedule</Button>
                   </div>
                 </div>
-              ))}
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No upcoming appointments found</p>
+                </div>
+              )}
+              {upcomingAppointments.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setUpcomingPage((prev) => Math.max(1, prev - 1))}
+                    disabled={upcomingPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Page {upcomingPage} of {upcomingTotalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setUpcomingPage((prev) => Math.min(upcomingTotalPages, prev + 1))}
+                    disabled={upcomingPage === upcomingTotalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="all" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>All Appointments</CardTitle>
+              <CardDescription>Complete appointment list across dates</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {appointments.length > 0 ? (
+                paginatedAllAppointments.map((apt) => (
+                  <div key={apt._id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div>
+                      <h3 className="font-semibold">{apt.patientName}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(apt.appointmentDate).toLocaleDateString()} at {apt.timeSlot} • {apt.doctorName}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">{apt.reason}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => handleCancelAppointment(apt.appointmentId)}>
+                        Cancel
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleReschedule(apt)}>Reschedule</Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <p className="text-muted-foreground">No appointments found</p>
+                </div>
+              )}
+              {appointments.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAllPage((prev) => Math.max(1, prev - 1))}
+                    disabled={allPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Page {allPage} of {allTotalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAllPage((prev) => Math.min(allTotalPages, prev + 1))}
+                    disabled={allPage === allTotalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
