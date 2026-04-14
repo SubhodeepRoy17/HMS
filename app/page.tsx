@@ -5,7 +5,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import {
   Stethoscope,
   Users,
-  BarChart3,
   Clock,
   CheckCircle2,
   Zap,
@@ -14,8 +13,6 @@ import {
   ArrowRight,
   Heart,
   Activity,
-  Pill,
-  Briefcase,
 } from 'lucide-react'
 import Link from 'next/link'
 
