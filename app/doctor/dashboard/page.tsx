@@ -22,7 +22,7 @@ interface DashboardStats {
   completedAppointments: number
   totalPatients: number
   activePrescriptions: number
-  pendingReports: number
+  nextVisitDate: string
 }
 
 interface Appointment {
@@ -62,7 +62,7 @@ export default function DoctorDashboard() {
     completedAppointments: 0,
     totalPatients: 0,
     activePrescriptions: 0,
-    pendingReports: 0,
+    nextVisitDate: 'No follow-up scheduled',
   })
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
   const [recentPatients, setRecentPatients] = useState<RecentPatient[]>([])
@@ -79,6 +79,7 @@ export default function DoctorDashboard() {
       setIsLoading(true)
       
       const today = new Date().toISOString().split('T')[0]
+      let nextVisitDate = 'No follow-up scheduled'
       
       // Load today's appointments
       const appointmentsRes = await doctorApi.getAppointments()
@@ -95,6 +96,15 @@ export default function DoctorDashboard() {
         ).length
         completed = appointmentsRes.data.filter((a: any) => a.status === 'completed').length
         setTodayAppointments(todayApps.slice(0, 5))
+
+        const followUps = appointmentsRes.data
+          .map((a: any) => a.nextVisitDate || a.opdConsultation?.nextVisit)
+          .filter(Boolean)
+          .sort((a: string, b: string) => new Date(a).getTime() - new Date(b).getTime())
+
+        if (followUps.length > 0) {
+          nextVisitDate = new Date(followUps[0]).toLocaleDateString()
+        }
       }
       
       // Load prescriptions
@@ -129,7 +139,7 @@ export default function DoctorDashboard() {
         completedAppointments: completed,
         totalPatients,
         activePrescriptions,
-        pendingReports: 0,
+        nextVisitDate,
       })
       
       const recentFromAppointments = new Map<string, RecentPatient>()
@@ -264,15 +274,15 @@ export default function DoctorDashboard() {
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <CardTitle className="text-sm font-semibold text-muted-foreground mb-2">
-                  Active Prescriptions
+                  Next Visit Due
                 </CardTitle>
-                <p className="text-3xl font-bold">{stats.activePrescriptions}</p>
+                <p className="text-3xl font-bold">{stats.nextVisitDate}</p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Current medications
+                  Follow-up set by you
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-purple-500/10">
-                <Pill className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                <FileText className="h-6 w-6 text-amber-600 dark:text-amber-400" />
               </div>
             </div>
           </CardHeader>
@@ -339,6 +349,11 @@ export default function DoctorDashboard() {
                     </div>
                     <div className="flex gap-2">
                       {apt.status === 'scheduled' && (
+                        <Button size="sm" disabled title="Waiting for reception check-in (Mark Arrived)">
+                          Start Consultation
+                        </Button>
+                      )}
+                      {apt.status === 'arrived' && (
                         <Button size="sm" onClick={() => handleStartConsultation(apt._id)}>
                           Start Consultation
                         </Button>

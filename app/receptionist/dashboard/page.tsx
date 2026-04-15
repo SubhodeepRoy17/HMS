@@ -23,6 +23,7 @@ interface DashboardStats {
   newRegistrations: number
   occupancyRate: number
   totalPatientsToday: number
+  nextVisitDate: string
 }
 
 interface RecentActivity {
@@ -47,11 +48,24 @@ export default function ReceptionistDashboard() {
     newRegistrations: 0,
     occupancyRate: 0,
     totalPatientsToday: 0,
+    nextVisitDate: 'No follow-up scheduled',
   })
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([])
   const [todayAppointments, setTodayAppointments] = useState<any[]>([])
   const [todayPage, setTodayPage] = useState(1)
   const [activityPage, setActivityPage] = useState(1)
+
+  const formatDisplayDate = (value: string) => {
+    if (!value) return 'No follow-up scheduled'
+
+    // Prevent timezone shift for plain YYYY-MM-DD values.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [y, m, d] = value.split('-').map(Number)
+      return new Date(y, m - 1, d).toLocaleDateString()
+    }
+
+    return new Date(value).toLocaleDateString()
+  }
 
   useEffect(() => {
     setIsClient(true)
@@ -65,6 +79,19 @@ export default function ReceptionistDashboard() {
       
       // Load today's appointments
       const appointmentsRes = await receptionApi.getAppointments(undefined, undefined, today)
+      const allAppointmentsRes = await receptionApi.getAppointments(undefined, undefined, undefined, undefined, 1, 1000)
+      let nextVisitDate = 'No follow-up scheduled'
+
+      if (allAppointmentsRes.success && allAppointmentsRes.data && Array.isArray(allAppointmentsRes.data)) {
+        const followUps = allAppointmentsRes.data
+          .map((a: any) => a.nextVisitDate || a.opdConsultation?.nextVisit)
+          .filter(Boolean)
+          .sort((a: string, b: string) => new Date(a).getTime() - new Date(b).getTime())
+
+        if (followUps.length > 0) {
+          nextVisitDate = formatDisplayDate(followUps[0])
+        }
+      }
       
       if (appointmentsRes.success && appointmentsRes.data) {
         const appointments = appointmentsRes.data
@@ -85,6 +112,7 @@ export default function ReceptionistDashboard() {
           newRegistrations: 0, // Would come from registrations API
           occupancyRate: Math.round((checkedIn + completed) / (appointments.length || 1) * 100),
           totalPatientsToday: appointments.length,
+          nextVisitDate,
         })
 
         const activityData = appointments.slice(0, 3).map((appointment: any, index: number) => ({
@@ -239,11 +267,11 @@ export default function ReceptionistDashboard() {
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <CardTitle className="text-sm font-semibold text-muted-foreground mb-2">
-                  New Registrations
+                  Next Visit Due
                 </CardTitle>
-                <p className="text-3xl font-bold">{stats.newRegistrations}</p>
+                <p className="text-3xl font-bold">{stats.nextVisitDate}</p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Today's new patients
+                  Follow-up set by doctor
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-purple-500/10">

@@ -91,11 +91,23 @@ export default function PatientDashboard() {
       const appointmentsRes = await patientApi.getMyAppointments()
       let upcoming: UpcomingAppointment[] = []
       let completed = 0
+      let nextVisitDate = 'No follow-up scheduled'
       
       if (appointmentsRes.success && appointmentsRes.data && Array.isArray(appointmentsRes.data)) {
         upcoming = appointmentsRes.data.filter((a: any) => a.status === 'scheduled')
         completed = appointmentsRes.data.filter((a: any) => a.status === 'completed').length
         setUpcomingAppointments(upcoming.slice(0, 3))
+
+        const followUps = appointmentsRes.data
+          .map((a: any) => a.nextVisitDate || a.opdConsultation?.nextVisit)
+          .filter(Boolean)
+          .sort((a: string, b: string) => new Date(a).getTime() - new Date(b).getTime())
+
+        if (followUps.length > 0) {
+          nextVisitDate = new Date(followUps[0]).toLocaleDateString()
+        } else if (upcoming.length > 0) {
+          nextVisitDate = new Date(upcoming[0].appointmentDate).toLocaleDateString()
+        }
       }
       
       // Load prescriptions
@@ -151,9 +163,7 @@ export default function PatientDashboard() {
         completedTests,
         pendingTests,
         lastVisit: completed > 0 ? 'Recent visit' : 'No visits yet',
-        nextAppointment: upcoming.length > 0 
-          ? new Date(upcoming[0].appointmentDate).toLocaleDateString() 
-          : 'No upcoming appointments',
+        nextAppointment: nextVisitDate,
       })
       
     } catch (error) {
@@ -252,11 +262,11 @@ export default function PatientDashboard() {
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <CardTitle className="text-sm font-semibold text-muted-foreground mb-2">
-                  Upcoming Appointments
+                  Next Visit
                 </CardTitle>
-                <p className="text-3xl font-bold">{stats.upcomingAppointments}</p>
+                <p className="text-3xl font-bold">{stats.nextAppointment}</p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Next: {stats.nextAppointment}
+                  Upcoming appointments: {stats.upcomingAppointments}
                 </p>
               </div>
               <div className="p-3 rounded-lg bg-blue-500/10">

@@ -202,9 +202,6 @@ export default function DoctorAppointmentsPage() {
         <div className="flex gap-2 flex-wrap">
           {apt.status === 'scheduled' && (
             <>
-              <Button size="sm" onClick={() => handleUpdateStatus(apt._id, 'arrived')}>
-                Mark Arrived
-              </Button>
               <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(apt._id, 'no-show')}>
                 No Show
               </Button>
@@ -447,93 +444,105 @@ export default function DoctorAppointmentsPage() {
                 <p className="text-sm text-muted-foreground">{completingAppointment.patientId} • {completingAppointment.reason}</p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">Doctor Summary (Required)</label>
-                <textarea
-                  value={consultationSummary}
-                  onChange={(e) => setConsultationSummary(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md bg-background min-h-24"
-                  placeholder="Write diagnosis summary, findings, advice and follow-up instructions..."
-                />
-              </div>
+              <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Doctor Summary (Required)</label>
+                  <textarea
+                    value={consultationSummary}
+                    onChange={(e) => setConsultationSummary(e.target.value)}
+                    className="w-full min-h-24 rounded-md border bg-background px-3 py-2"
+                    placeholder="Write diagnosis summary, findings, advice and follow-up instructions..."
+                  />
+                </div>
 
-              <div className="space-y-3 border rounded-lg p-4">
-                <h3 className="font-semibold">Structured OPD Consultation</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Complaints</label>
-                    <textarea
-                      value={opdConsultation.complaints}
-                      onChange={(e) => setOpdConsultation({ ...opdConsultation, complaints: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-md bg-background"
-                      rows={2}
-                    />
+                <div className="rounded-lg border bg-background p-4">
+                  <div className="mb-4">
+                    <h3 className="font-semibold">Structured OPD Consultation</h3>
+                    <p className="text-sm text-muted-foreground">Capture the consultation in discrete clinical fields.</p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">History</label>
-                    <textarea
-                      value={opdConsultation.history}
-                      onChange={(e) => setOpdConsultation({ ...opdConsultation, history: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-md bg-background"
-                      rows={2}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Diagnosis</label>
-                    <textarea
-                      value={opdConsultation.diagnosis}
-                      onChange={(e) => setOpdConsultation({ ...opdConsultation, diagnosis: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-md bg-background"
-                      rows={2}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Investigations (comma separated)</label>
-                    <textarea
-                      value={opdConsultation.investigation}
-                      onChange={(e) => setOpdConsultation({ ...opdConsultation, investigation: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-md bg-background"
-                      rows={2}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Medicines Advice</label>
-                    <textarea
-                      value={opdConsultation.medicines}
-                      onChange={(e) => setOpdConsultation({ ...opdConsultation, medicines: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-md bg-background"
-                      rows={2}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Advice</label>
-                    <textarea
-                      value={opdConsultation.advice}
-                      onChange={(e) => setOpdConsultation({ ...opdConsultation, advice: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-md bg-background"
-                      rows={2}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Next Visit</label>
-                    <input
-                      type="date"
-                      value={opdConsultation.nextVisit}
-                      onChange={(e) => setOpdConsultation({ ...opdConsultation, nextVisit: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-md bg-background"
-                    />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Complaints</label>
+                      <textarea
+                        value={opdConsultation.complaints}
+                        onChange={(e) => setOpdConsultation({ ...opdConsultation, complaints: e.target.value })}
+                        className="w-full rounded-md border bg-background px-3 py-2"
+                        rows={3}
+                        placeholder="Chief complaints, symptoms, duration"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">History</label>
+                      <textarea
+                        value={opdConsultation.history}
+                        onChange={(e) => setOpdConsultation({ ...opdConsultation, history: e.target.value })}
+                        className="w-full rounded-md border bg-background px-3 py-2"
+                        rows={3}
+                        placeholder="Past history, medication history, relevant background"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Diagnosis</label>
+                      <textarea
+                        value={opdConsultation.diagnosis}
+                        onChange={(e) => setOpdConsultation({ ...opdConsultation, diagnosis: e.target.value })}
+                        className="w-full rounded-md border bg-background px-3 py-2"
+                        rows={3}
+                        placeholder="Primary diagnosis / impression"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Investigations</label>
+                      <textarea
+                        value={opdConsultation.investigation}
+                        onChange={(e) => setOpdConsultation({ ...opdConsultation, investigation: e.target.value })}
+                        className="w-full rounded-md border bg-background px-3 py-2"
+                        rows={3}
+                        placeholder="Comma separated test names"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Medicines Advice</label>
+                      <textarea
+                        value={opdConsultation.medicines}
+                        onChange={(e) => setOpdConsultation({ ...opdConsultation, medicines: e.target.value })}
+                        className="w-full rounded-md border bg-background px-3 py-2"
+                        rows={3}
+                        placeholder="Medication advice or prescription notes"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Advice</label>
+                      <textarea
+                        value={opdConsultation.advice}
+                        onChange={(e) => setOpdConsultation({ ...opdConsultation, advice: e.target.value })}
+                        className="w-full rounded-md border bg-background px-3 py-2"
+                        rows={3}
+                        placeholder="Follow-up instructions, diet, rest, warning signs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Next Visit Date</label>
+                      <input
+                        type="date"
+                        value={opdConsultation.nextVisit}
+                        onChange={(e) => setOpdConsultation({ ...opdConsultation, nextVisit: e.target.value })}
+                        className="w-full rounded-md border bg-background px-3 py-2"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">Consultation Fee</label>
-                <input
-                  type="number"
-                  value={consultationFee}
-                  onChange={(e) => setConsultationFee(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md bg-background"
-                />
+                <div>
+                  <label className="block text-sm font-medium mb-2">Consultation Fee</label>
+                  <input
+                    type="number"
+                    value={consultationFee}
+                    onChange={(e) => setConsultationFee(e.target.value)}
+                    className="w-full rounded-md border bg-background px-3 py-2"
+                  />
+                </div>
               </div>
 
               <div className="space-y-3">

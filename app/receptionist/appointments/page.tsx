@@ -446,7 +446,12 @@ export default function ReceptionistAppointmentsPage() {
                       <p className="text-sm text-muted-foreground mt-1">{apt.reason}</p>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleCancelAppointment(apt.appointmentId)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCancelAppointment(apt.appointmentId)}
+                        disabled={apt.status === 'completed'}
+                      >
                         Cancel
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => handleReschedule(apt)}>Reschedule</Button>

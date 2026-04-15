@@ -40,11 +40,14 @@ interface Doctor {
 }
 
 export default function ReceptionistPatientRecordsPage() {
+  const PAGE_SIZE = 5
   const { user } = useAuth()
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [patients, setPatients] = useState<PatientRecord[]>([])
+  const [activePage, setActivePage] = useState(1)
+  const [allPage, setAllPage] = useState(1)
   const [doctors, setDoctors] = useState<Doctor[]>([])
   const [selectedPatient, setSelectedPatient] = useState<PatientRecord | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
@@ -92,6 +95,8 @@ export default function ReceptionistPatientRecordsPage() {
       const response = await receptionApi.getPatients(search, undefined, 1, 50)
       if (response.success && response.data) {
         setPatients(response.data)
+        setActivePage(1)
+        setAllPage(1)
       }
     } catch (error) {
       console.error('Error loading patients:', error)
@@ -239,6 +244,20 @@ export default function ReceptionistPatientRecordsPage() {
     return <Badge className={variants[status] || 'bg-gray-100 text-gray-800'}>{status}</Badge>
   }
 
+  const activePatients = patients.filter((patient) => patient.status === 'active')
+  const activeTotalPages = Math.max(1, Math.ceil(activePatients.length / PAGE_SIZE))
+  const allTotalPages = Math.max(1, Math.ceil(patients.length / PAGE_SIZE))
+
+  const paginatedActivePatients = activePatients.slice(
+    (activePage - 1) * PAGE_SIZE,
+    activePage * PAGE_SIZE
+  )
+
+  const paginatedAllPatients = patients.slice(
+    (allPage - 1) * PAGE_SIZE,
+    allPage * PAGE_SIZE
+  )
+
   const handlePrintRegistration = (patient: PatientRecord) => {
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
@@ -326,8 +345,8 @@ export default function ReceptionistPatientRecordsPage() {
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-              ) : patients.length > 0 ? (
-                patients.map((patient) => (
+              ) : activePatients.length > 0 ? (
+                paginatedActivePatients.map((patient) => (
                   <div key={patient._id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
@@ -363,6 +382,27 @@ export default function ReceptionistPatientRecordsPage() {
                   <p className="text-muted-foreground">No patients found</p>
                 </div>
               )}
+              {activePatients.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActivePage((prev) => Math.max(1, prev - 1))}
+                    disabled={activePage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {activePage} of {activeTotalPages}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActivePage((prev) => Math.min(activeTotalPages, prev + 1))}
+                    disabled={activePage === activeTotalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -374,7 +414,7 @@ export default function ReceptionistPatientRecordsPage() {
               <CardDescription>Complete patient database</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {patients.map((patient) => (
+              {paginatedAllPatients.map((patient) => (
                 <div key={patient._id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                   <div className="flex-1">
                     <h3 className="font-semibold">{patient.demographics.fullName}</h3>
@@ -392,6 +432,27 @@ export default function ReceptionistPatientRecordsPage() {
                   </div>
                 </div>
               ))}
+              {patients.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAllPage((prev) => Math.max(1, prev - 1))}
+                    disabled={allPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">Page {allPage} of {allTotalPages}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAllPage((prev) => Math.min(allTotalPages, prev + 1))}
+                    disabled={allPage === allTotalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

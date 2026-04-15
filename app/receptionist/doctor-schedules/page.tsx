@@ -11,6 +11,24 @@ import { toast } from 'sonner'
 export default function ReceptionistDoctorSchedulesPage() {
   // Initialize with today's date
   const getTodayDate = () => new Date().toISOString().split('T')[0]
+  const departments = [
+    'General Medicine',
+    'Cardiology',
+    'Dermatology',
+    'ENT',
+    'Gastroenterology',
+    'Gynecology',
+    'Neurology',
+    'Orthopedics',
+    'Pediatrics',
+    'Psychiatry',
+    'Radiology',
+    'Surgery',
+    'Urology',
+    'Emergency',
+    'Pathology',
+    'Anesthesiology',
+  ]
   
   const [department, setDepartment] = useState('General Medicine')
   const [doctorId, setDoctorId] = useState('')
@@ -175,7 +193,17 @@ export default function ReceptionistDoctorSchedulesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium">Department</label>
-              <Input value={department} onChange={(e) => setDepartment(e.target.value)} />
+              <select
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+              >
+                {departments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex items-end">
               <Button variant="outline" onClick={fetchDoctors} disabled={isLoadingDoctors}>

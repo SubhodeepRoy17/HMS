@@ -108,6 +108,13 @@ export async function PUT(
       );
     }
 
+    if (status === 'in-progress' && appointment.status !== 'arrived') {
+      return NextResponse.json(
+        { success: false, message: 'Consultation can only be started after reception marks patient as arrived' },
+        { status: 400 }
+      );
+    }
+
     // Update appointment
     const updateData: any = { updatedAt: new Date() };
     
@@ -117,6 +124,7 @@ export async function PUT(
     if (reason) updateData.reason = reason;
     if (doctorSummary !== undefined) updateData.doctorSummary = doctorSummary;
     if (opdConsultation !== undefined) updateData.opdConsultation = opdConsultation;
+    if (opdConsultation?.nextVisit) updateData.nextVisitDate = opdConsultation.nextVisit;
 
     if (status === 'completed' && (!updateData.doctorSummary || !String(updateData.doctorSummary).trim()) && opdConsultation) {
       const summaryParts = [
@@ -172,6 +180,7 @@ export async function PUT(
           opdConsultation.nextVisit ? `Next Visit: ${opdConsultation.nextVisit}` : '',
         ].filter(Boolean).join('\n'),
         doctorSummary: updateData.doctorSummary || '',
+        nextVisitDate: opdConsultation.nextVisit || null,
         status: 'active',
         createdBy: new ObjectId(user.userId),
         createdAt: new Date(),
